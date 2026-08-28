@@ -9,7 +9,6 @@ import csv
 from pathlib import Path
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 import auth
 import database
@@ -272,51 +271,6 @@ input[aria-label="帳號（員工編號）"] {
 </style>
 """
 
-# 帳號欄位按 Enter 時，讓焦點跳到密碼欄位，而不是（因為在 st.form 裡）直接以空白密碼送出
-# 表單。密碼欄位按 Enter 維持原生行為（送出表單），不用額外處理。
-# 這段 JS 是「盡量攔截」，不是唯一防線——實測發現使用者在頁面/這段 script 所在的
-# iframe 還沒載入完成前就快速打完帳號按 Enter，會攔截不到，導致表單直接以空密碼送出、
-# 跳出「帳號或密碼錯誤」的嚇人訊息（帳號可能明明打對了）。真正保底的防線是
-# render_login_form() 裡的 Python 端判斷（帳號有填、密碼空白時不顯示錯誤），這裡只是
-# 讓「攔截成功」的情況下體驗更好、直接跳到密碼欄位；攔截失敗也不會顯示錯誤，只是使用者
-# 要自己點一下密碼欄位。監聽器改掛在 window（而不是 document）上，理論上能比掛在
-# document 更早進到 capture 階段，盡量搶在 Streamlit 自己的送出邏輯處理這個按鍵之前
-# 攔截到，但不保證每次都攔得到（載入時機還是有可能太慢）。
-_LOGIN_ENTER_NAV_JS = """
-<script>
-(function() {
-    function getDoc() {
-        try { return window.parent.document; } catch (e) { return null; }
-    }
-    function attach() {
-        const doc = getDoc();
-        const win = doc && doc.defaultView;
-        if (!doc || !win || win.__loginEnterNavAttached) return;
-        win.__loginEnterNavAttached = true;
-        win.addEventListener('keydown', function(e) {
-            if (e.isComposing || e.keyCode === 229) return;
-            const isEnter = e.key === 'Enter' || e.keyCode === 13;
-            if (!isEnter) return;
-            const active = doc.activeElement;
-            if (!active || active.getAttribute('aria-label') !== '帳號（員工編號）') return;
-            e.preventDefault();
-            e.stopPropagation();
-            if (e.stopImmediatePropagation) { e.stopImmediatePropagation(); }
-            const pwd = doc.querySelector('input[aria-label="密碼"]');
-            if (pwd) { pwd.focus(); }
-        }, true);
-    }
-    attach();
-    const doc0 = getDoc();
-    if (doc0 && doc0.defaultView && !doc0.__loginEnterNavInterval) {
-        doc0.__loginEnterNavInterval = true;
-        doc0.defaultView.setInterval(attach, 200);
-    }
-})();
-</script>
-"""
-
-
 def _do_login(employee_id: str, password: str) -> tuple[bool, str]:
     """驗證統一登入密碼 + 員工編號是否為在職員工，成功時把身分資料寫進 session_state。
     回傳 (是否成功, 失敗時的錯誤訊息)。"""
@@ -356,19 +310,18 @@ def render_login_form() -> None:
         )
         with st.form("login_form"):
             employee_id = st.text_input("帳號（員工編號）", autocomplete="off")
+            st.caption("打完帳號後請按 Tab 鍵切換到密碼欄位（Enter 鍵不會跳欄位）。")
             password = st.text_input("密碼", type="password", autocomplete="off")
             submitted = st.form_submit_button("Log In", width="stretch")
-        components.html(_LOGIN_ENTER_NAV_JS, height=0)
 
         if submitted:
             if employee_id.strip() and not password:
-                # 帳號欄位有填、密碼欄位是空的：極可能是使用者剛打完帳號按 Enter，
-                # 是想跳到密碼欄位（見下面的 _LOGIN_ENTER_NAV_JS），不是真的要送出
-                # 表單。下面那段 JS 攔截 Enter 的時機是「iframe 載入完成後」，使用者
-                # 打字夠快、頁面又還沒載入完的話會來不及攔截，讓表單真的送出，這時候
-                # 不能顯示「帳號或密碼錯誤」這種嚇人的錯誤訊息（帳號可能明明是對的，
-                # 只是密碼還沒打），靜默不處理、讓使用者接著打密碼即可，比對 JS 攔截
-                # 時機更可靠——不管 JS 到底有沒有攔截成功，這裡都能兜底。
+                # 帳號欄位有填、密碼欄位是空的：使用者可能是打完帳號習慣性按了 Enter
+                # （Streamlit 的 st.form 預設 Enter 就會送出整個表單），不是真的要送出。
+                # 這種情況不顯示「帳號或密碼錯誤」這種嚇人的錯誤訊息（帳號可能明明是對
+                # 的，只是密碼還沒打），靜默不處理即可，讓使用者接著打密碼、或改用 Tab
+                # 鍵移到密碼欄位。（之前試過用 JS 攔截 Enter 直接跳到密碼欄位，但攔截
+                # 時機不可靠、實測會漏接，已拿掉改用這個純 Python 端的寫法。）
                 pass
             else:
                 success, error_message = _do_login(employee_id.strip().upper(), password)
