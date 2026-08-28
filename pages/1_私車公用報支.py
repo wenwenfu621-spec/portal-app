@@ -7,7 +7,6 @@
 """
 import streamlit as st
 
-import bootstrap  # noqa: F401
 import database
 
 st.set_page_config(page_title="私車公用報支", page_icon="🚗")

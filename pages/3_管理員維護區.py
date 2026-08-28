@@ -8,7 +8,6 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-import bootstrap  # noqa: F401
 import auth
 import database
 

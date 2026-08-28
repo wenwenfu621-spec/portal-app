@@ -10,7 +10,6 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 
-import bootstrap  # noqa: F401  (設定 sys.path，讓下面 import auth/database 找得到)
 import auth
 import database
 

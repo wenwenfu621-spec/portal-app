@@ -6,7 +6,6 @@
 """
 import streamlit as st
 
-import bootstrap  # noqa: F401
 import database
 
 st.set_page_config(page_title="出差申報", page_icon="🧳")
