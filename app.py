@@ -12,11 +12,76 @@ import streamlit.components.v1 as components
 
 import auth
 import database
+from identity_watermark import inject_custom_footer, inject_version_tag
 
-st.set_page_config(page_title="伺服器事業部入口網站", page_icon="🖥️", layout="wide")
+APP_VERSION = "20260828-CLOUD-DEPLOY-FIX"
+
+st.set_page_config(
+    page_title="伺服器事業部入口網站",
+    page_icon="🖥️",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+inject_version_tag(APP_VERSION)
 
 _APP_DIR = Path(__file__).parent
 _BACKGROUND_IMAGE_PATH = _APP_DIR / "portal_background.jpg"
+
+# ---- 初始密碼／員工清單（2026-08-28 使用者確認的初始值）----
+# 部署後管理員應立即到「管理員維護區」把這兩組密碼改掉；這裡只是讓系統第一次能夠登入。
+_INITIAL_SHARED_LOGIN_PASSWORD = "28977162"
+_INITIAL_ADMIN_PASSWORD = "20080418"
+_INITIAL_ADMIN_PASSWORD_HINT = "管理員小孩生日"
+_INITIAL_EMPLOYEES = [
+    # (單位, 員工編號, 姓名, 職務)
+    ("伺服器事業部", "ETW00375", "溫文福", "主任工程師"),
+    ("伺服器事業部", None, "黃緯祺", "經理"),
+    ("伺服器事業部", None, "陳江科", "資深經理"),
+    ("伺服器事業部", None, "林欣誼", "資深專員"),
+    ("伺服器事業部", None, "陳春宇", "資深專員"),
+    ("伺服器事業部", None, "吳季穎", "資深專員"),
+    ("伺服器事業部", None, "邱承佑", None),
+]
+
+
+@st.cache_resource
+def _bootstrap_database() -> None:
+    """建表 + 寫入初始密碼／員工清單，整個 process 生命週期只需要真的執行一次
+    （用 st.cache_resource 快取，不是每次 rerun 都重新檢查一遍）。本機開發環境的
+    portal.db 已經手動跑過 shared-core/init_db.py 初始化過，這裡主要是為了雲端部署
+    ——部署到 Streamlit Cloud 時容器是全新的，事先不會有任何資料庫檔案，第一次啟動
+    App 時要能自己把資料表建起來、把最初能登入的密碼寫進去，不然會在還沒建表前就被
+    login 頁面查詢 system_settings 撞成 sqlite3.OperationalError。
+    全部都是 idempotent 寫法：資料表用 CREATE TABLE IF NOT EXISTS；密碼設定只在該筆
+    設定完全不存在時才寫入，不會覆蓋管理員之後在維護區改過的密碼；員工清單只在資料表
+    目前是空的時候才寫入，不會覆蓋管理員之後新增/停用過的資料。"""
+    conn = database.get_connection()
+    try:
+        database.init_schema(conn)
+
+        existing_keys = {row["key"] for row in conn.execute("SELECT key FROM system_settings")}
+        to_seed = {
+            "shared_login_password_hash": auth.hash_password(_INITIAL_SHARED_LOGIN_PASSWORD),
+            "admin_password_hash": auth.hash_password(_INITIAL_ADMIN_PASSWORD),
+            "admin_password_hint": _INITIAL_ADMIN_PASSWORD_HINT,
+        }
+        for key, value in to_seed.items():
+            if key not in existing_keys:
+                conn.execute("INSERT INTO system_settings (key, value) VALUES (?, ?)", (key, value))
+
+        employee_count = conn.execute("SELECT COUNT(*) AS c FROM employees").fetchone()["c"]
+        if employee_count == 0:
+            conn.executemany(
+                "INSERT INTO employees (department, employee_id, name, title) VALUES (?, ?, ?, ?)",
+                _INITIAL_EMPLOYEES,
+            )
+
+        conn.commit()
+    finally:
+        conn.close()
+
+
+_bootstrap_database()
 
 # 選單上「管理員維護區」入口只給這份名單裡的員工編號看得到，其他同仁登入後選單不會
 # 顯示這個選項（但不是新的安全邊界——管理員密碼仍是唯一的實際驗證關卡，這裡只是
@@ -304,3 +369,5 @@ if st.session_state.get("logged_in"):
     render_menu()
 else:
     render_login_form()
+
+inject_custom_footer()
