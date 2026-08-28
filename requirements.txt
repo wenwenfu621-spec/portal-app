@@ -1,2 +1,11 @@
 streamlit>=1.38
 openpyxl
+google-generativeai
+google-genai>=1.0
+python-docx>=1.1
+pymupdf>=1.24
+pillow>=10.0
+pillow-heif>=0.18
+requests
+xlrd==2.0.2
+python-dotenv>=1.0

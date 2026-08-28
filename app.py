@@ -5,6 +5,7 @@
 employee_title），供 pages/ 底下的子系統直接讀取，不需要再次輸入帳密或手動選擇姓名。
 """
 import base64
+import csv
 from pathlib import Path
 
 import streamlit as st
@@ -14,7 +15,7 @@ import auth
 import database
 from identity_watermark import inject_custom_footer, inject_version_tag
 
-APP_VERSION = "20260828-CLOUD-DEPLOY-FIX"
+APP_VERSION = "20260828-REAL-SUBSYSTEMS-CSV-SEED"
 
 st.set_page_config(
     page_title="伺服器事業部入口網站",
@@ -27,21 +28,47 @@ inject_version_tag(APP_VERSION)
 _APP_DIR = Path(__file__).parent
 _BACKGROUND_IMAGE_PATH = _APP_DIR / "portal_background.jpg"
 
-# ---- 初始密碼／員工清單（2026-08-28 使用者確認的初始值）----
+# ---- 初始密碼（2026-08-28 使用者確認的初始值）----
 # 部署後管理員應立即到「管理員維護區」把這兩組密碼改掉；這裡只是讓系統第一次能夠登入。
+# 密碼刻意維持寫死在程式碼裡（不拆成獨立檔案）——拆成單獨一份「密碼.xlsx」之類的檔案
+# 反而更容易被單獨複製/外流/誤傳，寫在程式碼裡至少不會被當成一般文件檔案處理。
 _INITIAL_SHARED_LOGIN_PASSWORD = "28977162"
 _INITIAL_ADMIN_PASSWORD = "20080418"
 _INITIAL_ADMIN_PASSWORD_HINT = "管理員小孩生日"
-_INITIAL_EMPLOYEES = [
-    # (單位, 員工編號, 姓名, 職務)
-    ("伺服器事業部", "ETW00375", "溫文福", "主任工程師"),
-    ("伺服器事業部", "ETW00378", "黃緯祺", "經理"),
-    ("伺服器事業部", "ETW00340", "陳江科", "資深經理"),
-    ("伺服器事業部", "ETW00202", "林欣誼", "資深專員"),
-    ("伺服器事業部", "ETW00227", "陳春宇", "資深專員"),
-    ("伺服器事業部", "ETW00415", "吳季穎", "資深專員"),
-    ("伺服器事業部", "ETW00464", "邱承佑", None),
-]
+
+# 員工清單改成獨立的 CSV 檔案（employees_seed.csv），不再寫死在程式碼裡——之後要新增/
+# 補齊員工編號，直接用 Excel 開這份檔案改、存檔、上傳到 GitHub 即可，不用再改程式碼。
+_EMPLOYEES_SEED_PATH = _APP_DIR / "employees_seed.csv"
+_EMPLOYEES_SEED_ENCODINGS = ["utf-8-sig", "cp950"]
+
+
+def _load_employees_seed() -> list[tuple[str, str | None, str, str | None]]:
+    """讀取 employees_seed.csv，回傳 [(單位, 員工編號, 姓名, 職務), ...]。
+    用 Excel 維護這份清單時，存檔容易不小心選到舊版「CSV（逗號分隔）」（Windows 地區
+    編碼，繁體中文環境是 cp950/Big5）而不是「CSV UTF-8」，依序都試一次；檔案不存在、
+    編碼不對、缺欄位等任何問題都靜默回傳空清單，不讓整個入口網站掛掉——沒有這份檔案
+    時單純不做員工清單的初始 seed，等管理員之後在維護區手動新增即可。"""
+    if not _EMPLOYEES_SEED_PATH.exists():
+        return []
+    for encoding in _EMPLOYEES_SEED_ENCODINGS:
+        try:
+            with open(_EMPLOYEES_SEED_PATH, encoding=encoding, newline="") as f:
+                reader = csv.DictReader(f)
+                rows = []
+                for row in reader:
+                    department = (row.get("單位") or "").strip()
+                    employee_id = (row.get("員工編號") or "").strip() or None
+                    name = (row.get("姓名") or "").strip()
+                    title = (row.get("職務") or "").strip() or None
+                    if not department or not name:
+                        continue
+                    rows.append((department, employee_id, name, title))
+            return rows
+        except (OSError, UnicodeDecodeError):
+            continue
+        except Exception:
+            return []
+    return []
 
 
 @st.cache_resource
@@ -71,10 +98,12 @@ def _bootstrap_database() -> None:
 
         employee_count = conn.execute("SELECT COUNT(*) AS c FROM employees").fetchone()["c"]
         if employee_count == 0:
-            conn.executemany(
-                "INSERT INTO employees (department, employee_id, name, title) VALUES (?, ?, ?, ?)",
-                _INITIAL_EMPLOYEES,
-            )
+            seed_rows = _load_employees_seed()
+            if seed_rows:
+                conn.executemany(
+                    "INSERT INTO employees (department, employee_id, name, title) VALUES (?, ?, ?, ?)",
+                    seed_rows,
+                )
 
         conn.commit()
     finally:

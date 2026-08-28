@@ -1,0 +1,4 @@
+libreoffice-calc
+python3-uno
+fonts-arphic-ukai
+fonts-arphic-uming
