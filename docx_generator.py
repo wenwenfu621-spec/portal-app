@@ -57,6 +57,12 @@ from models import ReceiptItem, TripHeader
 register_heif_opener()
 
 _IMAGE_CELL_WIDTH = Inches(3.1)
+# 直式（portrait）收據（例如又窄又長的中國大陸出租車發票）按固定寬度 3.1 吋等比例放大後，
+# 高度可能逼近甚至超過一整頁可用高度——這種列即使整頁都留給它也放不下，配合
+# _prevent_row_split_across_pages 的 cantSplit（同一列不可跨頁切開）就會被整列推到下一頁，
+# 前一頁剩餘空間全部變成空白（使用者回報「第一頁留白太多」的根因）。改成算出來的高度
+# 超過這個上限時，改依高度反推等比例縮小後的寬度，確保任何收據圖片都不會逼近整頁高度。
+_IMAGE_CELL_MAX_HEIGHT = Inches(5.5)
 _FONT_NAME = "標楷體"
 
 
@@ -137,6 +143,24 @@ def _prevent_row_split_across_pages(row):
     trPr.append(cant_split)
 
 
+def _picture_width_for(image_stream: io.BytesIO) -> int:
+    """算出嵌入時該用的寬度：預設用固定寬度 _IMAGE_CELL_WIDTH，但如果圖片是很窄很長的
+    直式收據，等比例放大到這個寬度後的高度會超過 _IMAGE_CELL_MAX_HEIGHT，改成依高度上限
+    反推等比例縮小後的寬度。呼叫後會把 image_stream 的讀取位置重設回開頭，供後續
+    add_picture() 正常讀取。"""
+    try:
+        with Image.open(image_stream) as probe:
+            px_w, px_h = probe.size
+    finally:
+        image_stream.seek(0)
+    if px_h <= 0:
+        return _IMAGE_CELL_WIDTH
+    height_at_default_width = _IMAGE_CELL_WIDTH * px_h / px_w
+    if height_at_default_width <= _IMAGE_CELL_MAX_HEIGHT:
+        return _IMAGE_CELL_WIDTH
+    return int(_IMAGE_CELL_MAX_HEIGHT * px_w / px_h)
+
+
 def _add_caption_and_image(cell, caption: str, image_stream: io.BytesIO | None):
     caption_p = cell.paragraphs[0]
     run = _set_run_font(caption_p.add_run(caption))
@@ -147,7 +171,7 @@ def _add_caption_and_image(cell, caption: str, image_stream: io.BytesIO | None):
         image_p = cell.add_paragraph()
         image_run = image_p.add_run()
         try:
-            image_run.add_picture(image_stream, width=_IMAGE_CELL_WIDTH)
+            image_run.add_picture(image_stream, width=_picture_width_for(image_stream))
         except Exception:
             note_run = _set_run_font(cell.add_paragraph().add_run("（圖片無法嵌入）"))
             note_run.font.size = Pt(9)

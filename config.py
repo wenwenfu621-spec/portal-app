@@ -1,5 +1,10 @@
 """
-版本：20260826-UX-FIXES-ROUND3
+版本：20260828-BUGFIX-DEAD-FALLBACK-MODEL
+更新內容：移除 GEMINI_MODEL_FALLBACK_CHAIN 最後一個模型 gemini-2.5-flash-lite（Google
+已下架，呼叫回傳 404），fallback chain 排到這個模型時會導致機票裁切靜默失敗、回傳
+未裁切/未轉正的原始照片。清單只留 3 個目前仍可用的模型。
+
+---（以下為 ROUND3 紀錄）---
 更新內容：ColumnLayout 新增 total_currency（X 欄）——範本裡這欄其實是寫死的示範文字，
 不是公式，寫入時要一併帶入該列實際幣別，否則會留著範本原本對不上的示範幣別代碼。
 
@@ -122,7 +127,6 @@ GEMINI_MODEL_FALLBACK_CHAIN: tuple[str, ...] = (
     GEMINI_MODEL,
     "gemini-3.7-flash",
     "gemini-3.5-flash-lite",
-    "gemini-2.5-flash-lite",
 )
 
 

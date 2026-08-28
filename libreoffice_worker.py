@@ -231,7 +231,16 @@ def _patch_row1518_limit_formulas(sheet, rows: list[int]):
 
 
 def _find_refund_cell(sheet, label_text: str, amount_col_offset: int):
-    """標籤比對找『退(補)款金額』這一列，回傳 (label_row, label_col, amount_col)（0-indexed）。"""
+    """標籤比對找『退(補)款金額』這一列，回傳 (label_row, label_col, amount_col)（0-indexed）。
+
+    amount_col 不再用「標籤欄 + 固定 offset」算——實測發現「退（補）金額：」標籤儲存格
+    在目前範本（202608-V05）是橫向合併 2 欄（AA:AB），導致金額實際落在 AD，比原本假設的
+    「標籤+2＝AC」多一欄，取到的是幣別欄（文字）而不是金額，getValue() 對文字儲存格
+    回傳 0，這正是使用者回報「支出憑單金額變成 NT$0」的根因（用實際輸出的 .xls 檔案
+    直接比對主表 AD48＝5433.4、支出憑單卻寫入 0 才抓到）。改成動態找：從標籤欄往右
+    掃到第一個非空儲存格＝幣別欄，幣別欄再往右一欄＝金額欄——不管標籤合併儲存格橫跨
+    幾欄，這個相對關係都成立，不用再假設固定欄距。amount_col_offset 參數保留供
+    找不到幣別欄時的除錯訊息使用，不再是主要判斷依據。"""
     used = sheet.getCellRangeByName("A1:AC60")
     start_row = used.RangeAddress.StartRow
     end_row = used.RangeAddress.EndRow
@@ -241,7 +250,13 @@ def _find_refund_cell(sheet, label_text: str, amount_col_offset: int):
         for c in range(start_col, end_col + 1):
             value = sheet.getCellByPosition(c, r).getString()
             if label_text in value and "金額" in value:
-                return r, c, c + amount_col_offset
+                currency_col = None
+                for probe_col in range(c + 1, c + 1 + max(amount_col_offset, 1) + 3):
+                    if sheet.getCellByPosition(probe_col, r).getString().strip():
+                        currency_col = probe_col
+                        break
+                amount_col = currency_col + 1 if currency_col is not None else c + amount_col_offset
+                return r, c, amount_col
     return None
 
 
@@ -285,7 +300,10 @@ def run_job(job: dict):
                 voucher_sheet.getCellRangeByName(cells["project_id"]).setString(voucher["project_id_text"])
                 voucher_sheet.getCellRangeByName(cells["support_desc"]).setString(voucher["support_desc"])
                 voucher_sheet.getCellRangeByName(cells["amount"]).setValue(refund_amount)
-                voucher_sheet.getCellRangeByName(cells["subtotal"]).setValue(refund_amount)
+                # 「小計」（G17）範本本身就是活公式 =SUM(G9:G16)，不能直接 setValue() 覆蓋——
+                # 那樣會把公式砍掉、變成寫死的數字，之後在 Excel 裡手動調整 G9 也不會跟著
+                # 重算。只寫 G9，讓 G17 自己的 SUM 公式在 doc.calculateAll() 時自然算出來
+                # （目前只有 G9 這一列有值，G10:G16 是空的，算出來的結果本來就會跟 G9 相同）。
 
                 doc.calculateAll()
 

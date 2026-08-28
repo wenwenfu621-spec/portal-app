@@ -558,25 +558,25 @@ else:
             key="merge_misc_allowance",
         )
 
-    for idx, item in enumerate(st.session_state.receipts):
+    for item in st.session_state.receipts:
         is_auto = item.source_filename.startswith("（系統自動計算）")
         badge = "🧮 自動計算" if is_auto else ("⚠️ 需複核" if item.needs_review else "✅")
         with st.expander(f"{badge} {item.source_filename}｜{item.category}｜{item.description or '(無說明)'}", expanded=item.needs_review and not is_auto):
             c1, c2, c3 = st.columns(3)
             with c1:
-                date_str = st.text_input("日期 (YYYY-MM-DD)", value=item.date.isoformat() if item.date else "", key=f"date_{idx}")
+                date_str = st.text_input("日期 (YYYY-MM-DD)", value=item.date.isoformat() if item.date else "", key=f"date_{item.id}")
             with c2:
-                item.currency = st.text_input("幣別", value=item.currency or "", key=f"currency_{idx}")
+                item.currency = st.text_input("幣別", value=item.currency or "", key=f"currency_{item.id}")
             with c3:
-                amount_str = st.text_input("金額", value=str(item.amount) if item.amount is not None else "", key=f"amount_{idx}")
-            item.description = st.text_input("說明", value=item.description, key=f"desc_{idx}")
+                amount_str = st.text_input("金額", value=str(item.amount) if item.amount is not None else "", key=f"amount_{item.id}")
+            item.description = st.text_input("說明", value=item.description, key=f"desc_{item.id}")
 
             if item.category == "交通費":
                 c4, c5 = st.columns(2)
                 with c4:
-                    item.location_from = st.text_input("起點", value=item.location_from or "", key=f"from_{idx}")
+                    item.location_from = st.text_input("起點", value=item.location_from or "", key=f"from_{item.id}")
                 with c5:
-                    item.location_to = st.text_input("訖點", value=item.location_to or "", key=f"to_{idx}")
+                    item.location_to = st.text_input("訖點", value=item.location_to or "", key=f"to_{item.id}")
 
             if item.confidence_reason:
                 st.caption(f"{'計算依據' if is_auto else '模型信心'}：{item.confidence_reason if is_auto else f'{item.confidence:.2f}'}　{'（手寫）' if item.is_handwritten else ''}")
@@ -592,7 +592,7 @@ else:
             except InvalidOperation:
                 st.error("金額格式錯誤")
 
-            item.user_confirmed = st.checkbox("已確認此筆資料正確", value=item.user_confirmed, key=f"confirm_{idx}")
+            item.user_confirmed = st.checkbox("已確認此筆資料正確", value=item.user_confirmed, key=f"confirm_{item.id}")
 
 # ---------- Step 5：產生並下載（Excel／Word 各自獨立） ----------
 st.header("Step 5　產生並下載")

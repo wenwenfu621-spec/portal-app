@@ -3,6 +3,7 @@
 更新內容：ReceiptItem 新增 raw_bytes（保留原始收據檔案內容），供 Word 明細清單改版後
 把收據原圖貼進文件用；docx_generator 之前只用檔名列表，現在需要實際檔案內容才能嵌圖。
 """
+import uuid
 from dataclasses import dataclass, field
 from datetime import date as date_type
 from decimal import Decimal
@@ -29,6 +30,12 @@ class ReceiptItem:
     source_filename: str
     category: str  # 交通費 / 住宿費 / 雜費津貼 / 餐費 / 交際費 / 其它
     raw_bytes: bytes = b""  # 原始檔案內容，供 Word 明細清單嵌圖用；系統自動計算的項目留空
+
+    # Step 4 複核表單的 widget key 要綁這個而不是 list index：自動計算列（雜費津貼／
+    # 餐費）在 Step 1 出差日期/出差地/範本變更時會被移除重建，這會讓後面手動上傳收據的
+    # list index 全部往前移，如果 widget key 還是用 index，Streamlit 快取的欄位內容就會
+    # 顯示成別筆收據的舊值。
+    id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
     date: Optional[date_type] = None
     date_range_end: Optional[date_type] = None  # 雜費津貼常見「整趟合計」情境
