@@ -106,7 +106,7 @@ import receipt_recognizer
 import trip_calculations
 from config import CATEGORIES
 from excel_writer import ExcelWriteError
-from identity_watermark import inject_custom_footer, inject_version_tag
+from identity_watermark import get_git_version, inject_custom_footer, inject_version_tag
 from models import ExpenseRow, ReceiptItem, TripHeader
 from ui_enhancements import inject_form_navigation_helpers, inject_theme_css
 
@@ -119,7 +119,7 @@ if not st.session_state.get("logged_in"):
 
 load_dotenv()
 
-APP_VERSION = "20260827-UX-FIXES-ROUND17"
+APP_VERSION = get_git_version()
 
 RECEIPT_FILE_TYPES = ["jpg", "jpeg", "png", "pdf", "heic", "heif", "webp"]
 AUTO_MISC_FILENAME = "（系統自動計算）雜費津貼"

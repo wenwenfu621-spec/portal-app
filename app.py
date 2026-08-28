@@ -12,9 +12,9 @@ import streamlit as st
 
 import auth
 import database
-from identity_watermark import inject_custom_footer, inject_version_tag
+from identity_watermark import get_git_version, inject_custom_footer, inject_version_tag
 
-APP_VERSION = "20260828-REAL-SUBSYSTEMS-CSV-SEED"
+APP_VERSION = get_git_version()
 
 st.set_page_config(
     page_title="伺服器事業部入口網站",

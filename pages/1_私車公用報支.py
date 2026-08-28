@@ -29,13 +29,14 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 import database
+from identity_watermark import get_git_version
 
 if not st.session_state.get("logged_in"):
     st.warning("請先登入")
     st.page_link("app.py", label="回登入頁")
     st.stop()
 
-APP_VERSION = "20260827-DEPT-STAFF-CSV-LIST"
+APP_VERSION = get_git_version()
 
 st.set_page_config(
     page_title=f"私車公用補助單自動化工具 ({APP_VERSION})", layout="centered"

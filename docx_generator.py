@@ -143,25 +143,38 @@ def _prevent_row_split_across_pages(row):
     trPr.append(cant_split)
 
 
-def _picture_width_for(image_stream: io.BytesIO) -> int:
-    """算出嵌入時該用的寬度：預設用固定寬度 _IMAGE_CELL_WIDTH，但如果圖片是很窄很長的
-    直式收據，等比例放大到這個寬度後的高度會超過 _IMAGE_CELL_MAX_HEIGHT，改成依高度上限
-    反推等比例縮小後的寬度。呼叫後會把 image_stream 的讀取位置重設回開頭，供後續
-    add_picture() 正常讀取。"""
+def _is_landscape_image(image_stream: io.BytesIO | None) -> bool:
+    """判斷圖片是橫向（寬>高）還是直向（高>=寬）。呼叫後會把 image_stream 的讀取位置
+    重設回開頭，供後續正常讀取。圖片本身處理失敗（image_stream 是 None）一律當直向
+    處理，跟現有兩欄並排剪貼簿的行為一致。"""
+    if image_stream is None:
+        return False
+    try:
+        with Image.open(image_stream) as probe:
+            px_w, px_h = probe.size
+    finally:
+        image_stream.seek(0)
+    return px_w > px_h
+
+
+def _picture_width_for(image_stream: io.BytesIO, target_width: int = _IMAGE_CELL_WIDTH) -> int:
+    """算出嵌入時該用的寬度：預設用 target_width，但如果等比例放大到這個寬度後的高度會
+    超過 _IMAGE_CELL_MAX_HEIGHT，改成依高度上限反推等比例縮小後的寬度。呼叫後會把
+    image_stream 的讀取位置重設回開頭，供後續 add_picture() 正常讀取。"""
     try:
         with Image.open(image_stream) as probe:
             px_w, px_h = probe.size
     finally:
         image_stream.seek(0)
     if px_h <= 0:
-        return _IMAGE_CELL_WIDTH
-    height_at_default_width = _IMAGE_CELL_WIDTH * px_h / px_w
-    if height_at_default_width <= _IMAGE_CELL_MAX_HEIGHT:
-        return _IMAGE_CELL_WIDTH
+        return target_width
+    height_at_target_width = target_width * px_h / px_w
+    if height_at_target_width <= _IMAGE_CELL_MAX_HEIGHT:
+        return target_width
     return int(_IMAGE_CELL_MAX_HEIGHT * px_w / px_h)
 
 
-def _add_caption_and_image(cell, caption: str, image_stream: io.BytesIO | None):
+def _add_caption_and_image(cell, caption: str, image_stream: io.BytesIO | None, target_width: int = _IMAGE_CELL_WIDTH):
     caption_p = cell.paragraphs[0]
     run = _set_run_font(caption_p.add_run(caption))
     run.font.size = Pt(10)
@@ -171,7 +184,7 @@ def _add_caption_and_image(cell, caption: str, image_stream: io.BytesIO | None):
         image_p = cell.add_paragraph()
         image_run = image_p.add_run()
         try:
-            image_run.add_picture(image_stream, width=_picture_width_for(image_stream))
+            image_run.add_picture(image_stream, width=_picture_width_for(image_stream, target_width))
         except Exception:
             note_run = _set_run_font(cell.add_paragraph().add_run("（圖片無法嵌入）"))
             note_run.font.size = Pt(9)
@@ -261,6 +274,8 @@ def generate_receipt_list_docx(
             for filename, raw_bytes in flight_ticket_files
         ]
 
+    full_image_width = Inches(_usable_page_width_in(doc))
+
     is_first_group = True
     for category, entries in groups.items():
         if not entries:
@@ -274,24 +289,39 @@ def generate_receipt_list_docx(
         category_run.bold = True
         category_run.font.size = Pt(13)
 
-        grid_entries = [(caption, image) for caption, image, is_pdf in entries if not is_pdf]
+        # 排版規則（固定規格，不要再因為其他修改跑掉——見
+        # tests/test_docx_generator.py 的 test_landscape_* / test_portrait_*）：
+        # 橫向（寬>高）收據單欄滿版、一張佔一整列；直向（高>=寬）收據維持兩欄並排。
+        # 橫向照片（例如平放拍攝的計程車收據）塞進兩欄並排的固定寬度會顯得過小，改成
+        # 滿版寬度個別成列更好辨識；直向照片（例如發票、票根）兩欄並排本來就不會太小，
+        # 且能讓同一科目下更多張收據塞進較少頁面。
+        landscape_entries = [(c, img) for c, img, is_pdf in entries if not is_pdf and _is_landscape_image(img)]
+        portrait_entries = [(c, img) for c, img, is_pdf in entries if not is_pdf and not _is_landscape_image(img)]
         pdf_entries = [(caption, image) for caption, image, is_pdf in entries if is_pdf]
 
-        if grid_entries:
+        if landscape_entries:
+            landscape_table = doc.add_table(rows=0, cols=1)
+            landscape_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+            for caption, image in landscape_entries:
+                row = landscape_table.add_row()
+                _prevent_row_split_across_pages(row)
+                _add_caption_and_image(row.cells[0], caption, image, target_width=full_image_width)
+
+        if portrait_entries:
             table = doc.add_table(rows=0, cols=2)
             table.alignment = WD_TABLE_ALIGNMENT.CENTER
-            for i in range(0, len(grid_entries), 2):
+            for i in range(0, len(portrait_entries), 2):
                 row = table.add_row()
                 _prevent_row_split_across_pages(row)
                 row_cells = row.cells
-                _add_caption_and_image(row_cells[0], *grid_entries[i])
-                if i + 1 < len(grid_entries):
-                    _add_caption_and_image(row_cells[1], *grid_entries[i + 1])
+                _add_caption_and_image(row_cells[0], *portrait_entries[i])
+                if i + 1 < len(portrait_entries):
+                    _add_caption_and_image(row_cells[1], *portrait_entries[i + 1])
 
         for pdf_idx, (caption, image_stream) in enumerate(pdf_entries):
             # 前面有並排剪貼簿表格、或這已經不是本科目第一張 PDF，才需要先分頁——
             # 科目底下第一項內容緊接在科目標題後面就好，不必多一次分頁留白頁。
-            if grid_entries or pdf_idx > 0:
+            if landscape_entries or portrait_entries or pdf_idx > 0:
                 doc.add_page_break()
             _add_full_page_image(doc, caption, image_stream)
 

@@ -31,9 +31,9 @@ Streamlit 專案，不會影響其他功能。
 範例（新專案 app.py 開頭）：
 --------------------------------
     import streamlit as st
-    from identity_watermark import inject_version_tag, inject_custom_footer
+    from identity_watermark import get_git_version, inject_version_tag, inject_custom_footer
 
-    APP_VERSION = "20260826-NEW-PROJECT-INIT"
+    APP_VERSION = get_git_version()
 
     st.set_page_config(page_title="我的新工具", layout="centered")
     inject_version_tag(APP_VERSION)
@@ -41,12 +41,37 @@ Streamlit 專案，不會影響其他功能。
     # ... 這裡放你的正式功能程式碼 ...
 
     inject_custom_footer()
+
+更新記錄（20260828）：APP_VERSION 改用 get_git_version() 讀取目前部署當下實際簽出的
+Git commit 短 hash，取代手動維護、容易忘記更新的寫死字串——每次程式碼異動、部署
+完成後自動反映實際版本，不需要（也不可能）每次改程式碼都記得手動同步這行文字。
 """
 
 import base64
 import os
+import subprocess
 
 import streamlit as st
+
+
+def get_git_version(app_dir: str | None = None) -> str:
+    """讀取目前部署當下實際簽出的 Git commit 短 hash，取代手動維護、容易忘記更新的
+    版本字串常數——每次程式碼異動、重新部署完成後這裡自動反映實際版本，不再需要（也
+    不可能）手動同步。app_dir 預設用呼叫端檔案所在目錄；Git 會自動往上層找 .git
+    目錄，所以就算 app_dir 是子目錄（例如多頁應用程式的 pages/ 底下）也能正確運作。
+    讀不到（例如執行環境沒有 git 指令、或不是 git checkout）就回傳 "unknown"，這只是
+    裝飾性的顯示標籤，讀取失敗不該影響主要功能。"""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=app_dir or os.path.dirname(os.path.abspath(__file__)),
+            capture_output=True, text=True, timeout=3,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return "unknown"
 
 
 def inject_version_tag(app_version: str) -> None:
