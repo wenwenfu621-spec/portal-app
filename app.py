@@ -95,7 +95,7 @@ def render_login_form() -> None:
             with st.form("login_form"):
                 employee_id = st.text_input("帳號（員工編號）")
                 password = st.text_input("密碼", type="password")
-                submitted = st.form_submit_button("Log In", use_container_width=True)
+                submitted = st.form_submit_button("Log In", width="stretch")
 
             if submitted:
                 success, error_message = _do_login(employee_id.strip(), password)
@@ -117,12 +117,12 @@ def render_menu() -> None:
                 f"</p>",
                 unsafe_allow_html=True,
             )
-            st.page_link("pages/1_私車公用報支.py", label="🚗 私車公用報支", use_container_width=True)
-            st.page_link("pages/2_出差申報.py", label="🧳 出差申報", use_container_width=True)
-            st.page_link("pages/3_管理員維護區.py", label="🛠️ 管理員維護區", use_container_width=True)
+            st.page_link("pages/1_私車公用報支.py", label="🚗 私車公用報支", width="stretch")
+            st.page_link("pages/2_出差申報.py", label="🧳 出差申報", width="stretch")
+            st.page_link("pages/3_管理員維護區.py", label="🛠️ 管理員維護區", width="stretch")
 
             st.write("")
-            if st.button("登出", use_container_width=True):
+            if st.button("登出", width="stretch"):
                 for key in (
                     "logged_in",
                     "employee_id",

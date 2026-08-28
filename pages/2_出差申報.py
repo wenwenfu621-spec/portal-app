@@ -7,6 +7,7 @@
 import streamlit as st
 
 import bootstrap  # noqa: F401
+import database
 
 st.set_page_config(page_title="出差申報", page_icon="🧳")
 
@@ -16,6 +17,15 @@ if not st.session_state.get("logged_in"):
     st.stop()
 
 st.title("🧳 出差申報")
+
+conn = database.get_connection()
+try:
+    sop = database.get_sop_document(conn, "trip_expense")
+finally:
+    conn.close()
+if sop:
+    st.download_button("📄 查看操作SOP", data=sop["content"], file_name=sop["filename"])
+
 st.info("此頁面尚未併入 trip-expense-app 子系統，以下為登入身分自動帶入示範。")
 st.write(f"員工編號：{st.session_state['employee_id']}")
 st.write(f"姓名：{st.session_state['employee_name']}")

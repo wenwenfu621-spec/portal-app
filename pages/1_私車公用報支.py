@@ -8,6 +8,7 @@
 import streamlit as st
 
 import bootstrap  # noqa: F401
+import database
 
 st.set_page_config(page_title="私車公用報支", page_icon="🚗")
 
@@ -17,6 +18,15 @@ if not st.session_state.get("logged_in"):
     st.stop()
 
 st.title("🚗 私車公用報支")
+
+conn = database.get_connection()
+try:
+    sop = database.get_sop_document(conn, "car_expense")
+finally:
+    conn.close()
+if sop:
+    st.download_button("📄 查看操作SOP", data=sop["content"], file_name=sop["filename"])
+
 st.info("此頁面尚未併入 car-expense-app 子系統，以下為登入身分自動帶入示範。")
 st.write(f"單位：{st.session_state['employee_department']}")
 st.write(f"姓名：{st.session_state['employee_name']}")
