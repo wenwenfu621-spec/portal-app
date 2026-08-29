@@ -10,13 +10,50 @@ import streamlit.components.v1 as components
 
 import auth
 import database
+from identity_watermark import get_git_version, inject_custom_footer, inject_version_tag
+from portal_theme import inject_glass_theme
 
-st.set_page_config(page_title="管理員維護區", page_icon="🛠️", layout="centered", initial_sidebar_state="collapsed")
+APP_VERSION = get_git_version()
+
+st.set_page_config(page_title="管理員維護區", page_icon="🛠️", layout="wide", initial_sidebar_state="collapsed")
 
 if not st.session_state.get("logged_in"):
     st.warning("請先登入")
     st.page_link("app.py", label="回登入頁")
     st.stop()
+
+# 導覽列（返回主頁／登出）跟頁面標題，放在管理員密碼驗證關卡「之前」——不論有沒有通過
+# 第二層管理員密碼驗證，只要已經從入口網站登入，都應該能隨時返回主頁或登出，跟私車公用
+# 報支、出差申報兩頁的行為一致。
+#
+# 版本標籤／玻璃主題兩個注入呼叫，刻意搬到這個 sticky 容器「之後」才執行——原本放在
+# 最前面是為了讓還沒登入入口網站時的「請先登入」提示畫面也套用得到玻璃背景，但那個
+# 畫面很少見（只有直接用網址列進來、沒有先從入口網站登入時才看得到），代價是每個注入
+# 呼叫都會在導覽列前面多佔一段 Streamlit 預設的元件間距，讓導覽列初始位置比私車公用
+# 報支低一截。兩相權衡，改成搬到導覽列之後執行，讓三頁的導覽列位置能真正對齊——「請先
+# 登入」畫面因此會變回沒有玻璃背景的純白畫面，但功能不受影響。
+with st.container(key="portal_sticky_header"):
+    with st.container(key="portal_nav_bar"):
+        _nav_col1, _nav_col2 = st.columns(2)
+        with _nav_col1:
+            st.page_link("app.py", label="← 返回主頁", width=160)
+        with _nav_col2:
+            if st.button("登出", key="admin_logout", width=160):
+                for _key in (
+                    "logged_in",
+                    "employee_id",
+                    "employee_name",
+                    "employee_department",
+                    "employee_title",
+                    "is_admin_verified",
+                ):
+                    st.session_state.pop(_key, None)
+                st.switch_page("app.py")
+    with st.container(key="page_title_bar"):
+        st.title("🛠️ 管理員維護區")
+
+inject_version_tag(APP_VERSION)
+inject_glass_theme()
 
 if not st.session_state.get("is_admin_verified"):
     st.subheader("🛠️ 管理員驗證")
@@ -34,11 +71,7 @@ if not st.session_state.get("is_admin_verified"):
             st.rerun()
         else:
             st.error(f"密碼錯誤。提示：{hint}" if hint else "密碼錯誤")
-    st.page_link("app.py", label="← 回選單")
     st.stop()
-
-st.title("🛠️ 管理員維護區")
-st.page_link("app.py", label="← 回選單")
 
 # 動作完成後會 st.rerun() 讓表格/清單重新讀取資料庫最新狀態，但 st.rerun() 會讓當次
 # script run 提前中止，寫在動作處理常式裡的 st.success/st.warning 訊息還沒被看到就消失。
@@ -346,3 +379,5 @@ elif submit_admin:
     finally:
         conn.close()
     st.success("管理員密碼設定已更新")
+
+inject_custom_footer()

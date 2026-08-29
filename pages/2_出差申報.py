@@ -108,6 +108,7 @@ from config import CATEGORIES
 from excel_writer import ExcelWriteError
 from identity_watermark import get_git_version, inject_custom_footer, inject_version_tag
 from models import ExpenseRow, ReceiptItem, TripHeader
+from portal_theme import inject_glass_theme
 from ui_enhancements import inject_form_navigation_helpers, inject_theme_css
 
 import database
@@ -125,6 +126,57 @@ RECEIPT_FILE_TYPES = ["jpg", "jpeg", "png", "pdf", "heic", "heif", "webp"]
 AUTO_MISC_FILENAME = "（系統自動計算）雜費津貼"
 
 st.set_page_config(page_title="出差報支自動填表工具", layout="wide", initial_sidebar_state="collapsed")
+
+# 版本標籤／卡片美化／Tab 鍵導覽輔助這三個呼叫，刻意搬到導覽列 sticky 容器「之後」才
+# 執行——它們都只是注入 CSS/JS，實際效果不受執行順序影響，但 Streamlit 會把每個呼叫
+# 當成一個獨立元件，元件之間即使沒有畫面內容也會插入預設間距（gap）。搬到後面執行，
+# 才不會在導覽列前面疊出好幾個看不見卻佔間距的元件，導致導覽列初始位置比私車公用報支
+# 低一截（實測差了快 49px）。
+with st.container(key="portal_sticky_header"):
+    with st.container(key="portal_nav_bar"):
+        _nav_col1, _nav_col2 = st.columns(2)
+        with _nav_col1:
+            st.page_link("app.py", label="← 返回主頁", width=160)
+        with _nav_col2:
+            if st.button("登出", key="trip_expense_logout", width=160):
+                for _key in (
+                    "logged_in",
+                    "employee_id",
+                    "employee_name",
+                    "employee_department",
+                    "employee_title",
+                    "is_admin_verified",
+                ):
+                    st.session_state.pop(_key, None)
+                st.switch_page("app.py")
+
+    if "receipts" not in st.session_state:
+        st.session_state.receipts: list[ReceiptItem] = []
+    if "template_bytes" not in st.session_state:
+        st.session_state.template_bytes = None
+    if "template_filename" not in st.session_state:
+        st.session_state.template_filename = None
+    if "flight_ticket_filenames" not in st.session_state:
+        st.session_state.flight_ticket_filenames: list[str] = []
+    if "flight_ticket_files" not in st.session_state:
+        st.session_state.flight_ticket_files: list[tuple[str, bytes]] = []
+    if "excel_bytes" not in st.session_state:
+        st.session_state.excel_bytes = None
+    if "docx_bytes" not in st.session_state:
+        st.session_state.docx_bytes = None
+    if "meal_region_rates" not in st.session_state:
+        st.session_state.meal_region_rates = None
+    if "meal_detail_entries" not in st.session_state:
+        st.session_state.meal_detail_entries = []
+    if "auto_row_signature" not in st.session_state:
+        st.session_state.auto_row_signature = None
+
+    with st.container(key="page_title_bar"):
+        st.markdown(
+            '<h1 style="text-align:center;">出差報支自動填表工具</h1>',
+            unsafe_allow_html=True,
+        )
+
 inject_version_tag(APP_VERSION)
 inject_theme_css()
 inject_form_navigation_helpers()
@@ -136,48 +188,6 @@ finally:
     _conn.close()
 if _sop:
     st.download_button("📄 查看操作SOP", data=_sop["content"], file_name=_sop["filename"])
-
-_nav_col1, _nav_col2 = st.columns(2)
-with _nav_col1:
-    st.page_link("app.py", label="← 返回主頁", width="stretch")
-with _nav_col2:
-    if st.button("登出", key="trip_expense_logout", width="stretch"):
-        for _key in (
-            "logged_in",
-            "employee_id",
-            "employee_name",
-            "employee_department",
-            "employee_title",
-            "is_admin_verified",
-        ):
-            st.session_state.pop(_key, None)
-        st.switch_page("app.py")
-
-if "receipts" not in st.session_state:
-    st.session_state.receipts: list[ReceiptItem] = []
-if "template_bytes" not in st.session_state:
-    st.session_state.template_bytes = None
-if "template_filename" not in st.session_state:
-    st.session_state.template_filename = None
-if "flight_ticket_filenames" not in st.session_state:
-    st.session_state.flight_ticket_filenames: list[str] = []
-if "flight_ticket_files" not in st.session_state:
-    st.session_state.flight_ticket_files: list[tuple[str, bytes]] = []
-if "excel_bytes" not in st.session_state:
-    st.session_state.excel_bytes = None
-if "docx_bytes" not in st.session_state:
-    st.session_state.docx_bytes = None
-if "meal_region_rates" not in st.session_state:
-    st.session_state.meal_region_rates = None
-if "meal_detail_entries" not in st.session_state:
-    st.session_state.meal_detail_entries = []
-if "auto_row_signature" not in st.session_state:
-    st.session_state.auto_row_signature = None
-
-st.markdown(
-    '<h1 style="text-align:center;">出差報支自動填表工具</h1>',
-    unsafe_allow_html=True,
-)
 
 try:
     _secrets_api_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -735,4 +745,5 @@ with col_word:
             icon=":material/download:",
         )
 
+inject_glass_theme()
 inject_custom_footer()

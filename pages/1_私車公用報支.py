@@ -30,6 +30,7 @@ import streamlit.components.v1 as components
 
 import database
 from identity_watermark import get_git_version
+from portal_theme import inject_glass_theme
 
 if not st.session_state.get("logged_in"):
     st.warning("請先登入")
@@ -40,7 +41,7 @@ APP_VERSION = get_git_version()
 
 st.set_page_config(
     page_title=f"私車公用補助單自動化工具 ({APP_VERSION})",
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="collapsed",
 )
 
@@ -52,21 +53,31 @@ finally:
 if _sop:
     st.download_button("📄 查看操作SOP", data=_sop["content"], file_name=_sop["filename"])
 
-_nav_col1, _nav_col2 = st.columns(2)
-with _nav_col1:
-    st.page_link("app.py", label="← 返回主頁", width="stretch")
-with _nav_col2:
-    if st.button("登出", key="car_expense_logout", width="stretch"):
-        for _key in (
-            "logged_in",
-            "employee_id",
-            "employee_name",
-            "employee_department",
-            "employee_title",
-            "is_admin_verified",
-        ):
-            st.session_state.pop(_key, None)
-        st.switch_page("app.py")
+with st.container(key="portal_sticky_header"):
+    with st.container(key="portal_nav_bar"):
+        _nav_col1, _nav_col2 = st.columns(2)
+        with _nav_col1:
+            st.page_link("app.py", label="← 返回主頁", width=160)
+        with _nav_col2:
+            if st.button("登出", key="car_expense_logout", width=160):
+                for _key in (
+                    "logged_in",
+                    "employee_id",
+                    "employee_name",
+                    "employee_department",
+                    "employee_title",
+                    "is_admin_verified",
+                ):
+                    st.session_state.pop(_key, None)
+                st.switch_page("app.py")
+    # 網頁標題原本在程式後段（跟 apple_style_css 等一堆 CSS 注入邏輯混在一起，本身沒有
+    # 任何實際可見內容插在中間），移到這裡跟導覽列包在同一個 sticky 容器內，兩者才能
+    # 共用同一塊背景色，滾動時不會露出中間沒背景色的裸底圖空隙。
+    with st.container(key="page_title_bar"):
+        st.markdown(
+            "<h2 style='font-size: 2.75rem; font-weight: 700; margin-top: -10px; text-align: center;'>\U0001F697 私車公用補助單自動化填寫工具 \U0001F697</h2>",
+            unsafe_allow_html=True,
+        )
 
 # 注入蘋果風格 (Apple-style) 視覺樣式 CSS
 # 說明：以下僅為畫面顯示樣式調整 (字型/圓角/陰影/配色/間距)，
@@ -441,12 +452,6 @@ def inject_custom_footer():
     """
     st.markdown(footer_css, unsafe_allow_html=True)
 
-
-# 1. 網頁標題
-st.markdown(
-    "<h2 style='font-size: 1.6rem; font-weight: 700; white-space: nowrap; margin-top: -10px; text-align: center;'>\U0001F697 私車公用補助單自動化填寫工具 \U0001F697</h2>",
-    unsafe_allow_html=True,
-)
 
 st.markdown(
     "上傳停車/加油發票或 **PDF 檔**，由 Gemini AI 自動辨識日期與金額，輕鬆生成報銷單！"
@@ -1183,4 +1188,8 @@ if "parsed_parking" in st.session_state or "parsed_gas" in st.session_state:
                 )
 
 inject_enter_and_memory_js()
+# 玻璃擬態主題放在整支頁面最後才注入，確保這裡的 CSS 在原本 apple_style_css（一樣有
+# !important）之後，靠 CSS 「同優先度時後面蓋前面」的規則勝出，不用去改動原本的
+# apple_style_css 內容或改它的注入順序。
+inject_glass_theme()
 inject_custom_footer()
