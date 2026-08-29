@@ -547,16 +547,20 @@ else:
         real_user_name = user_name_display
 
 # 4. 上傳檔案
+_UPLOAD_SIZE_HINT = "建議每張單據檔案控制在 10MB 以內，上傳與 AI 辨識速度較順暢（系統技術上限為 200MB，非強制）。"
+
 uploaded_parking_files = st.file_uploader(
     "1. 上傳停車發票/收據（照片或 PDF 檔，可多選）",
     type=["jpg", "jpeg", "png", "pdf"],
     accept_multiple_files=True,
+    help=_UPLOAD_SIZE_HINT,
 )
 
 uploaded_gas_files = st.file_uploader(
     "2. 上傳加油發票/收據（照片或 PDF 檔，可多選）",
     type=["jpg", "jpeg", "png", "pdf"],
     accept_multiple_files=True,
+    help=_UPLOAD_SIZE_HINT,
 )
 
 

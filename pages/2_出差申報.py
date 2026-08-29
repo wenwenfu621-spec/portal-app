@@ -399,12 +399,15 @@ if template_file is not None:
 st.header("Step 3　依科目分類上傳收據")
 st.caption("請依科目分類上傳，避免混在一起造成分類錯誤。全部上傳完後，按下方「開始辨識」按鈕一次觸發辨識。")
 
+_UPLOAD_SIZE_HINT = "建議每張單據檔案控制在 10MB 以內，上傳與 AI 辨識速度較順暢（系統技術上限為 200MB，非強制）。"
+
 uploads_by_category: dict[str, list] = {}
 for category in CATEGORIES:
     st.subheader(category)
     uploads_by_category[category] = st.file_uploader(
         f"上傳{category}收據", type=RECEIPT_FILE_TYPES,
         accept_multiple_files=True, key=f"upload_{category}",
+        help=_UPLOAD_SIZE_HINT,
     )
     st.divider()
 
@@ -412,6 +415,7 @@ st.subheader("來回機票票根（僅列入 Word 明細清單附件，不寫入
 flight_ticket_uploads = st.file_uploader(
     "上傳來回機票票根", type=RECEIPT_FILE_TYPES,
     accept_multiple_files=True, key="upload_flight_ticket",
+    help=_UPLOAD_SIZE_HINT,
 )
 if "flight_ticket_crop_cache" not in st.session_state:
     st.session_state.flight_ticket_crop_cache: dict[str, bytes] = {}
