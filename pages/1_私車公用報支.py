@@ -39,7 +39,9 @@ if not st.session_state.get("logged_in"):
 APP_VERSION = get_git_version()
 
 st.set_page_config(
-    page_title=f"私車公用補助單自動化工具 ({APP_VERSION})", layout="centered"
+    page_title=f"私車公用補助單自動化工具 ({APP_VERSION})",
+    layout="centered",
+    initial_sidebar_state="collapsed",
 )
 
 conn = database.get_connection()
@@ -49,6 +51,22 @@ finally:
     conn.close()
 if _sop:
     st.download_button("📄 查看操作SOP", data=_sop["content"], file_name=_sop["filename"])
+
+_nav_col1, _nav_col2 = st.columns(2)
+with _nav_col1:
+    st.page_link("app.py", label="← 返回主頁", width="stretch")
+with _nav_col2:
+    if st.button("登出", key="car_expense_logout", width="stretch"):
+        for _key in (
+            "logged_in",
+            "employee_id",
+            "employee_name",
+            "employee_department",
+            "employee_title",
+            "is_admin_verified",
+        ):
+            st.session_state.pop(_key, None)
+        st.switch_page("app.py")
 
 # 注入蘋果風格 (Apple-style) 視覺樣式 CSS
 # 說明：以下僅為畫面顯示樣式調整 (字型/圓角/陰影/配色/間距)，

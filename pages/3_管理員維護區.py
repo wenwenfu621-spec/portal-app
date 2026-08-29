@@ -11,7 +11,7 @@ import streamlit.components.v1 as components
 import auth
 import database
 
-st.set_page_config(page_title="管理員維護區", page_icon="🛠️", layout="centered")
+st.set_page_config(page_title="管理員維護區", page_icon="🛠️", layout="centered", initial_sidebar_state="collapsed")
 
 if not st.session_state.get("logged_in"):
     st.warning("請先登入")

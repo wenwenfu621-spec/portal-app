@@ -124,7 +124,7 @@ APP_VERSION = get_git_version()
 RECEIPT_FILE_TYPES = ["jpg", "jpeg", "png", "pdf", "heic", "heif", "webp"]
 AUTO_MISC_FILENAME = "（系統自動計算）雜費津貼"
 
-st.set_page_config(page_title="出差報支自動填表工具", layout="wide")
+st.set_page_config(page_title="出差報支自動填表工具", layout="wide", initial_sidebar_state="collapsed")
 inject_version_tag(APP_VERSION)
 inject_theme_css()
 inject_form_navigation_helpers()
@@ -136,6 +136,22 @@ finally:
     _conn.close()
 if _sop:
     st.download_button("📄 查看操作SOP", data=_sop["content"], file_name=_sop["filename"])
+
+_nav_col1, _nav_col2 = st.columns(2)
+with _nav_col1:
+    st.page_link("app.py", label="← 返回主頁", width="stretch")
+with _nav_col2:
+    if st.button("登出", key="trip_expense_logout", width="stretch"):
+        for _key in (
+            "logged_in",
+            "employee_id",
+            "employee_name",
+            "employee_department",
+            "employee_title",
+            "is_admin_verified",
+        ):
+            st.session_state.pop(_key, None)
+        st.switch_page("app.py")
 
 if "receipts" not in st.session_state:
     st.session_state.receipts: list[ReceiptItem] = []
