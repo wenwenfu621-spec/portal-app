@@ -175,6 +175,14 @@ def inject_glass_theme() -> None:
         .st-key-page_title_bar {{
             padding: 0.3rem 0 !important;
         }}
+        /* text-align 用繼承的沒有用——Streamlit 自己的基礎樣式對 h1 直接設了
+           text-align: left，明確設定的值一定贏過從父層繼承來的值（不管優先度高低，
+           繼承本來就是 CSS 層疊裡最低順位），一定要直接選到 h1 本身蓋掉才會生效。
+           管理員維護區用 st.title() 產生的是 h1（私車公用報支/出差申報則是自己在
+           markdown 裡手動加了 text-align:center 的行內樣式，不受影響）。 */
+        .st-key-page_title_bar h1 {{
+            text-align: center !important;
+        }}
 
         /* 檔案上傳（Upload）按鈕統一套用跟其他按鈕一致的漸層樣式，不用子系統各自
            內建的樣式（例如私車公用報支的 apple_style_css 是純藍色）。 */
