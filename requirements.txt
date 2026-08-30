@@ -9,3 +9,4 @@ pillow-heif>=0.18
 requests
 xlrd==2.0.2
 python-dotenv>=1.0
+gspread>=6.0

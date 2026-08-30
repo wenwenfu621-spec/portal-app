@@ -1,6 +1,6 @@
 """
 管理員維護區：第二層驗證（獨立管理員密碼，跟同仁的統一登入密碼分開存放），
-驗證通過後提供三項維護功能：部門員工資料維護、上傳操作SOP、更新登入密碼。
+驗證通過後提供四項維護功能：部門員工資料維護、使用統計、上傳操作SOP、更新登入密碼。
 """
 import sqlite3
 
@@ -12,6 +12,7 @@ import auth
 import database
 from identity_watermark import get_git_version, inject_custom_footer, inject_version_tag
 from portal_theme import inject_glass_theme
+from usage_log import load_usage_log, parse_timestamp, usage_summary
 
 APP_VERSION = get_git_version()
 
@@ -273,7 +274,63 @@ if st.button("儲存員工資料變更", type="primary"):
         conn.close()
 
 # ---------------------------------------------------------------------------
-# 2. 上傳操作SOP
+# 2. 使用統計
+# ---------------------------------------------------------------------------
+st.divider()
+st.header("使用統計")
+st.caption("資料每分鐘自動更新一次，讀取失敗（例如試算表權限問題）時下方會顯示 0，不影響其他功能。")
+
+_usage_df = load_usage_log()
+_summary = usage_summary(_usage_df)
+
+_stat_col1, _stat_col2 = st.columns(2)
+for _stat_col, _system in zip((_stat_col1, _stat_col2), ("私車公用報支", "出差申報")):
+    with _stat_col:
+        st.subheader(_system)
+        _num_col1, _num_col2 = st.columns(2)
+        _num_col1.metric("開啟頁面", _summary[_system]["開啟頁面"])
+        _num_col2.metric("產表", _summary[_system]["產表"])
+
+if _usage_df.empty:
+    st.info("目前沒有可顯示的使用紀錄。")
+else:
+    _usage_df = _usage_df.copy()
+    _usage_df["_時間"] = parse_timestamp(_usage_df["時間戳記"])
+
+    _filter_col1, _filter_col2, _filter_col3, _filter_col4 = st.columns(4)
+    _min_date = _usage_df["_時間"].min()
+    _max_date = _usage_df["_時間"].max()
+    _default_start = _min_date.date() if pd.notna(_min_date) else None
+    _default_end = _max_date.date() if pd.notna(_max_date) else None
+    with _filter_col1:
+        _date_start = st.date_input("起始日期", value=_default_start, key="usage_date_start")
+    with _filter_col2:
+        _date_end = st.date_input("結束日期", value=_default_end, key="usage_date_end")
+    with _filter_col3:
+        _system_filter = st.selectbox("系統", ["全部", "私車公用報支", "出差申報"], key="usage_system_filter")
+    with _filter_col4:
+        _event_filter = st.selectbox("事件類型", ["全部", "開啟頁面", "產表"], key="usage_event_filter")
+
+    _filtered = _usage_df
+    if _date_start:
+        _filtered = _filtered[_filtered["_時間"].dt.date >= _date_start]
+    if _date_end:
+        _filtered = _filtered[_filtered["_時間"].dt.date <= _date_end]
+    if _system_filter != "全部":
+        _filtered = _filtered[_filtered["系統"] == _system_filter]
+    if _event_filter != "全部":
+        _filtered = _filtered[_filtered["事件類型"] == _event_filter]
+
+    _filtered = _filtered.sort_values("_時間", ascending=False)
+    st.caption(f"符合篩選條件共 {len(_filtered)} 筆，依時間新到舊排序。")
+    st.dataframe(
+        _filtered[["時間戳記", "員工編號", "姓名", "系統", "事件類型"]],
+        width="stretch",
+        hide_index=True,
+    )
+
+# ---------------------------------------------------------------------------
+# 3. 上傳操作SOP
 # ---------------------------------------------------------------------------
 st.divider()
 st.header("上傳操作SOP")
@@ -333,7 +390,7 @@ with sop_col2:
         st.rerun()
 
 # ---------------------------------------------------------------------------
-# 3. 更新登入密碼
+# 4. 更新登入密碼
 # ---------------------------------------------------------------------------
 st.divider()
 st.header("更新密碼")

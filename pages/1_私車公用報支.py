@@ -24,18 +24,20 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt
 from PIL import Image, ImageOps
-import requests
 import streamlit as st
 import streamlit.components.v1 as components
 
 import database
 from identity_watermark import get_git_version
 from portal_theme import inject_glass_theme
+from usage_log import log_page_open, log_usage
 
 if not st.session_state.get("logged_in"):
     st.warning("請先登入")
     st.page_link("app.py", label="回登入頁")
     st.stop()
+
+log_page_open("私車公用報支")
 
 APP_VERSION = get_git_version()
 
@@ -241,11 +243,6 @@ version_css = f"""
 """
 st.markdown(version_css, unsafe_allow_html=True)
 
-# Google 表單背景紀錄設定
-FORM_RESPONSE_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeWI7dFxqjMeX9H0KxbSYVETuBiTOLEqZs43T06yKdbQofNAQ/formResponse"
-ENTRY_NAME_ID = "entry.505350995"
-ENTRY_DEPT_ID = "entry.1840094204"
-
 
 def render_block_progress_html(percentage, current_count, total_count):
     """產出 20 格黑色方塊進度條，以 5% 為最小計數單位，數字顯示於右側"""
@@ -330,30 +327,6 @@ def render_block_progress_html(percentage, current_count, total_count):
     </div>
     """
     return html_code
-
-
-def log_usage_to_google_form(name_val, dept_val):
-    """背景默默傳送使用者姓名與部門紀錄至 Google 表單 (完全靜音無感)"""
-    try:
-        form_data = {
-            ENTRY_NAME_ID: name_val if name_val else "NA",
-            ENTRY_DEPT_ID: dept_val if dept_val else "NA",
-        }
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        }
-
-        session = requests.Session()
-        session.post(
-            FORM_RESPONSE_URL,
-            data=form_data,
-            headers=headers,
-            timeout=5,
-            allow_redirects=True,
-        )
-    except Exception:
-        pass
 
 
 # 注入 JavaScript：強效導航演算法 + 欄位 Enter 導航
@@ -843,9 +816,6 @@ has_files = (uploaded_parking_files and len(uploaded_parking_files) > 0) or (
 
 if has_files and real_user_name and user_dept:
     if st.button("\U0001F916 AI 辨識單據內容"):
-        # 點擊 AI 辨識時發送真實全名至背景紀錄
-        log_usage_to_google_form(real_user_name, user_dept)
-
         parsed_parking = []
         parsed_gas = []
 
@@ -1055,8 +1025,7 @@ if "parsed_parking" in st.session_state or "parsed_gas" in st.session_state:
             if len(details) == 0:
                 st.warning("\u26A0\uFE0F 請先上傳並填寫至少一筆停車發票明細！")
             else:
-                # 點擊產出 Excel 時發送真實全名至背景紀錄
-                log_usage_to_google_form(real_user_name, user_dept)
+                log_usage("私車公用報支", "產表")
 
                 template_xlsx = "私車公用補助申請單.xlsx"
 
@@ -1127,8 +1096,7 @@ if "parsed_parking" in st.session_state or "parsed_gas" in st.session_state:
     # 產出 Word 報支單據憑證檔
     with btn_col2:
         if st.button("\U0001F4C4 產出 Word 報支單據檔"):
-            # 點擊產出 Word 時發送真實全名至背景紀錄
-            log_usage_to_google_form(real_user_name, user_dept)
+            log_usage("私車公用報支", "產表")
 
             doc = Document()
 

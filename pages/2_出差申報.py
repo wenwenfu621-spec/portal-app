@@ -110,6 +110,7 @@ from identity_watermark import get_git_version, inject_custom_footer, inject_ver
 from models import ExpenseRow, ReceiptItem, TripHeader
 from portal_theme import inject_glass_theme
 from ui_enhancements import inject_form_navigation_helpers, inject_theme_css
+from usage_log import log_page_open, log_usage
 
 import database
 
@@ -117,6 +118,8 @@ if not st.session_state.get("logged_in"):
     st.warning("請先登入")
     st.page_link("app.py", label="回登入頁")
     st.stop()
+
+log_page_open("出差申報")
 
 load_dotenv()
 
@@ -720,6 +723,7 @@ with col_excel:
                     destination_plain_name=trip_calculations.destination_plain_name(header),
                 )
             st.success("Excel 產生完成！打開時會自動重新計算金額，不需要手動按任何按鍵。")
+            log_usage("出差申報", "產表")
         except ExcelWriteError as exc:
             st.session_state.excel_bytes = None
             st.error(str(exc))
@@ -741,6 +745,7 @@ with col_word:
                 header, st.session_state.receipts, st.session_state.flight_ticket_files
             )
         st.success("Word 明細清單產生完成！")
+        log_usage("出差申報", "產表")
     if st.session_state.docx_bytes:
         st.download_button(
             "下載單據明細清單 Word", data=st.session_state.docx_bytes,
