@@ -1,0 +1,1456 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>出差工作日誌</title>
+<style>
+  :root {
+    --bg: #f5f1e9;
+    --surface: #ffffff;
+    --surface-2: #faf7f1;
+    --border: #ddd4c2;
+    --text: #2b2620;
+    --text-muted: #7a7266;
+    --accent: #a4573a;
+    --accent-hover: #8c4830;
+    --accent-contrast: #ffffff;
+    --danger: #b3452f;
+    --danger-hover: #963a27;
+    --success: #4c7a4c;
+    --warn: #b3822f;
+    --input-bg: #ffffff;
+    --shadow: rgba(43, 38, 32, 0.08);
+    --today-ring: #a4573a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1a17;
+      --surface: #262320;
+      --surface-2: #2c2925;
+      --border: #423d36;
+      --text: #ece6db;
+      --text-muted: #a29a8c;
+      --accent: #d8875f;
+      --accent-hover: #e2996f;
+      --accent-contrast: #201c17;
+      --danger: #d97a63;
+      --danger-hover: #e28e78;
+      --success: #7fb37f;
+      --warn: #d8ab5f;
+      --input-bg: #201d19;
+      --shadow: rgba(0, 0, 0, 0.35);
+      --today-ring: #d8875f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: '標楷體', 'DFKai-SB', 'BiauKai', 'KaiTi', serif;
+  }
+  h1, h2, h3 { margin: 0; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 28px 20px 90px; }
+  header.app-header { margin-bottom: 20px; }
+  header.app-header h1 { font-size: 1.6rem; font-weight: 700; }
+  header.app-header p { margin: 6px 0 0; color: var(--text-muted); font-size: 0.9rem; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 1px 4px var(--shadow);
+    margin-bottom: 20px;
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .card-header h2 { font-size: 1.15rem; }
+
+  /* Buttons */
+  button { font-family: inherit; cursor: pointer; }
+  .btn {
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-contrast);
+  }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn-danger {
+    background: transparent;
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  .btn-danger:hover { background: var(--danger); color: #fff; }
+  .btn-sm { padding: 5px 10px; font-size: 0.8rem; }
+  .btn-icon-round {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-size: 1.1rem;
+    line-height: 1;
+    border: 1px solid var(--danger);
+    background: transparent;
+    color: var(--danger);
+  }
+  .btn-icon-round:hover { background: var(--danger); color: #fff; }
+
+  /* Folder status */
+  .folder-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+  .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+  .badge.connected { color: var(--success); border-color: var(--success); }
+  .badge.connected .dot { background: var(--success); }
+  .badge.reauth { color: var(--warn); border-color: var(--warn); }
+  .badge.reauth .dot { background: var(--warn); }
+  .badge.unsupported { color: var(--danger); border-color: var(--danger); }
+  .badge.unsupported .dot { background: var(--danger); }
+  .folder-hint { color: var(--text-muted); font-size: 0.82rem; margin-top: 10px; line-height: 1.6; }
+  .folder-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* Trip info form */
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px 18px;
+  }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.span-2 { grid-column: span 2; }
+  .field label { font-size: 0.82rem; color: var(--text-muted); font-weight: 500; }
+  .field input[type="text"], .field textarea {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 11px;
+    font-size: 0.92rem;
+    color: var(--text);
+    font-family: inherit;
+    width: 100%;
+  }
+  .field textarea { resize: vertical; min-height: 44px; }
+  .field input:focus, .field textarea:focus, .date-trigger:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(164, 87, 58, 0.15);
+  }
+  .date-range { display: flex; align-items: center; gap: 8px; }
+  .date-range span { color: var(--text-muted); }
+
+  .date-trigger {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 11px;
+    font-size: 0.9rem;
+    color: var(--text);
+    text-align: left;
+    width: 100%;
+  }
+  .date-trigger.placeholder { color: var(--text-muted); }
+  .date-trigger:hover { border-color: var(--accent); }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    border-bottom: 2px solid var(--border);
+    padding: 8px 8px;
+  }
+  tbody td {
+    padding: 8px 8px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.col-no { color: var(--text-muted); width: 34px; padding-top: 14px; }
+  td.col-weekday { width: 56px; font-size: 0.85rem; color: var(--text-muted); white-space: nowrap; padding-top: 12px; }
+  td.col-date { width: 150px; }
+  td.col-topic { width: 190px; }
+  td.col-status { width: auto; }
+  td.col-del { width: 40px; text-align: center; }
+  td.col-topic input, td.col-status textarea {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    color: var(--text);
+  }
+  td.col-status textarea { resize: vertical; min-height: 42px; }
+  td.col-topic input:disabled {
+    background: var(--surface-2);
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+  .rest-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    margin-bottom: 5px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .rest-toggle input[type="checkbox"] {
+    width: 13px;
+    height: 13px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  /* Toolbar */
+  .toolbar {
+    position: sticky;
+    bottom: 0;
+    background: var(--bg);
+    padding: 14px 0 4px;
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    border-top: 1px solid var(--border);
+  }
+  .toolbar .spacer { flex: 1; }
+  #saveStatus { font-size: 0.8rem; color: var(--text-muted); }
+  .btn-group { display: inline-flex; align-items: center; gap: 4px; }
+  .help-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-size: 0.76rem;
+    font-weight: 700;
+    line-height: 1;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .help-icon:hover, .help-icon.active { border-color: var(--accent); color: var(--accent); }
+  #helpPopover {
+    position: fixed;
+    z-index: 200;
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px var(--shadow);
+    padding: 12px 14px;
+    width: 260px;
+    font-size: 0.82rem;
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  /* Calendar popover */
+  #calPopover {
+    position: fixed;
+    z-index: 200;
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px var(--shadow);
+    padding: 12px;
+    width: 260px;
+  }
+  .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .cal-header button {
+    background: transparent; border: none; font-size: 1.1rem; color: var(--text);
+    width: 28px; height: 28px; border-radius: 6px;
+  }
+  .cal-header button:hover { background: var(--surface-2); }
+  .cal-header .cal-title { font-weight: 600; font-size: 0.92rem; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .cal-grid .cal-wd { text-align: center; font-size: 0.72rem; color: var(--text-muted); padding: 4px 0; }
+  .cal-grid button.cal-day {
+    background: transparent; border: none; border-radius: 6px;
+    padding: 7px 0; font-size: 0.85rem; color: var(--text);
+  }
+  .cal-grid button.cal-day:hover { background: var(--surface-2); }
+  .cal-grid button.cal-day.today { box-shadow: inset 0 0 0 1px var(--today-ring); }
+  .cal-grid button.cal-day.selected { background: var(--accent); color: var(--accent-contrast); }
+  .cal-actions { display: flex; justify-content: space-between; margin-top: 8px; gap: 8px; }
+  .cal-actions button { flex: 1; font-size: 0.8rem; }
+
+  /* Toast */
+  #toastArea { position: fixed; top: 18px; right: 18px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 10px 16px; border-radius: 8px; box-shadow: 0 4px 14px var(--shadow);
+    font-size: 0.86rem; opacity: 0; transform: translateY(-6px);
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { border-color: var(--danger); color: var(--danger); }
+
+  /* Confirmation modal (used for Excel export result — needs to be unmissable) */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 16, 10, 0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 400;
+    padding: 20px;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 30px 28px;
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 16px 40px var(--shadow);
+  }
+  .modal-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--success);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    margin: 0 auto 14px;
+  }
+  .modal-icon.error { background: var(--danger); }
+  .modal-box h3 { margin-bottom: 10px; font-size: 1.15rem; }
+  .modal-box p {
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    line-height: 1.7;
+    margin: 0 0 22px;
+    word-break: break-all;
+    white-space: pre-line;
+  }
+  .modal-box .btn { width: 100%; }
+
+  /* Mobile responsive table */
+  @media (max-width: 640px) {
+    .info-grid { grid-template-columns: 1fr; }
+    .field.span-2 { grid-column: span 1; }
+    table, thead, tbody, tr, td { display: block; width: 100%; }
+    thead { display: none; }
+    tbody tr {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+    tbody td {
+      border-bottom: none;
+      padding: 6px 0;
+      width: 100%;
+    }
+    td.col-no, td.col-weekday, td.col-date, td.col-topic, td.col-status, td.col-del {
+      width: 100%;
+      padding-top: 6px;
+    }
+    td::before {
+      content: attr(data-label);
+      display: block;
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-bottom: 3px;
+    }
+    td.col-del { display: flex; justify-content: flex-end; }
+    td.col-del::before { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="appRoot">
+  <header class="app-header">
+    <h1>出差工作日誌</h1>
+    <p>資料僅儲存於本機，不上傳雲端。填寫每日工作紀錄，可匯出 Excel 附於出差報支單。</p>
+  </header>
+
+  <section class="card" id="folderCard">
+    <div class="card-header">
+      <h2>本機資料夾</h2>
+      <span class="badge" id="folderBadge"><span class="dot"></span><span id="folderBadgeText">檢查中…</span></span>
+    </div>
+    <div class="folder-row folder-actions">
+      <button class="btn btn-primary" id="btnChooseFolder">選擇資料夾</button>
+      <button class="btn" id="btnChangeFolder" style="display:none;">更換資料夾</button>
+      <button class="btn" id="btnReconnectFolder" style="display:none;">重新連接資料夾</button>
+    </div>
+    <p class="folder-hint" id="folderHint"></p>
+  </section>
+
+  <section class="card" id="infoCard">
+    <div class="card-header"><h2>出差資訊</h2></div>
+    <div class="info-grid">
+      <div class="field">
+        <label for="fLocation">出差地點</label>
+        <input type="text" id="fLocation" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>出差期間</label>
+        <div class="date-range">
+          <button type="button" class="date-trigger placeholder" id="fDateStart">請選擇日期</button>
+          <span>～</span>
+          <button type="button" class="date-trigger placeholder" id="fDateEnd">請選擇日期</button>
+        </div>
+      </div>
+      <div class="field span-2">
+        <label for="fPurpose">出差目的</label>
+        <textarea id="fPurpose" rows="2"></textarea>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="logCard">
+    <div class="card-header">
+      <h2>每日紀錄</h2>
+      <button class="btn btn-primary" id="btnAddRow">＋ 新增一天</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>No.</th>
+          <th>日期</th>
+          <th>星期</th>
+          <th>Topic</th>
+          <th>Status Description</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </section>
+
+  <div class="toolbar">
+    <span id="saveStatus"></span>
+    <div class="spacer"></div>
+    <span class="btn-group">
+      <button class="btn" id="btnExportBackup">匯出備份 (JSON)</button>
+      <button type="button" class="help-icon" data-help-for="helpExportBackup">?</button>
+    </span>
+    <span class="btn-group">
+      <button class="btn" id="btnImportBackup">匯入備份</button>
+      <button type="button" class="help-icon" data-help-for="helpImportBackup">?</button>
+    </span>
+    <button class="btn btn-danger" id="btnClearAll">清空所有資料</button>
+    <button class="btn btn-primary" id="btnExportExcel">匯出 Excel (.xlsx)</button>
+  </div>
+</div>
+
+<div id="helpPopover" style="display:none;"></div>
+<template id="helpExportBackup">把目前所有資料另外存成一份 .json 備份檔案，可用來搬到別台電腦，或在清除瀏覽器資料前留一份保險。這個檔案是給「匯入備份」讀回來用的，不是給人直接閱讀的格式。</template>
+<template id="helpImportBackup">選擇一個先前用「匯出備份」存出的 .json 檔案，讀回來取代目前畫面上的資料（讀取前會先詢問確認）。用於還原備份，或接續使用別台電腦匯出的資料。</template>
+
+<!--
+  入口網站整合用權限畫面（預設隱藏）。
+  這只是「不顯示功能」的畫面提示，不是安全機制——
+  真正的存取控制（誰能看到／進入這個頁面）必須由入口網站伺服器端判斷，
+  不能只靠這裡的前端 JS 隱藏。詳見專案根目錄 PORTAL_INTEGRATION_SPEC.md。
+-->
+<div class="wrap" id="accessGate" style="display:none;">
+  <div class="card" style="text-align:center; padding:48px 24px;">
+    <h2 style="margin-bottom:12px;">功能尚未開放</h2>
+    <p id="accessGateMsg" style="color:var(--text-muted); line-height:1.7;">此功能目前僅開放管理員測試，如需使用請洽系統管理員。</p>
+  </div>
+</div>
+
+<div id="calPopover">
+  <div class="cal-header">
+    <button type="button" id="calPrev">‹</button>
+    <span class="cal-title" id="calTitle"></span>
+    <button type="button" id="calNext">›</button>
+  </div>
+  <div class="cal-grid" id="calGrid"></div>
+  <div class="cal-actions">
+    <button type="button" class="btn btn-sm" id="calToday">今天</button>
+    <button type="button" class="btn btn-sm" id="calClear">清除</button>
+  </div>
+</div>
+
+<input type="file" id="importFileInput" accept="application/json,.json" style="display:none;">
+<div id="toastArea"></div>
+
+<div class="modal-overlay" id="exportModal">
+  <div class="modal-box">
+    <div class="modal-icon" id="exportModalIcon">✓</div>
+    <h3 id="exportModalTitle">已完成匯出</h3>
+    <p id="exportModalMsg"></p>
+    <button type="button" class="btn btn-primary" id="exportModalOk">好，我知道了</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ---------- 入口網站整合掛勾點 ----------
+  // 入口網站若要嵌入本頁，請在載入此檔案「之前」，於獨立的 script 區塊注入設定物件：
+  //   window.BIZ_TRIP_LOG_ACCESS = { allowed: true, role: 'admin', message: '' };
+  // 未注入時預設 allowed:true（維持目前單機獨立使用行為不變）。
+  // 注意：這僅控制畫面是否顯示，不是安全機制。是否放行必須由伺服器端（誰能連到這個頁面／路由）決定，
+  // 前端這層只是避免未開放對象在畫面上看到功能。詳見 PORTAL_INTEGRATION_SPEC.md。
+  var accessConfig = window.BIZ_TRIP_LOG_ACCESS || { allowed: true };
+
+  var LS_KEY = 'biz-trip-daily-log:v1';
+  var IDB_NAME = 'biz-trip-log-db';
+  var IDB_STORE = 'handles';
+  var IDB_KEY = 'folderHandle';
+
+  var state = defaultState();
+  var folderHandle = null;
+  var folderStatus = 'none'; // none | connected | reauth | unsupported
+  var saveTimer = null;
+  var calState = { visible: false, anchorEl: null, onSelect: null, onClear: null, viewYear: 0, viewMonth: 1, selected: '' };
+
+  function defaultState() {
+    return {
+      info: { location: '', dateStart: '', dateEnd: '', purpose: '' },
+      logs: [ { date: '', topic: '', status: '', restOverride: false } ]
+    };
+  }
+
+  function normalizeState(data) {
+    var out = defaultState();
+    if (data && typeof data === 'object') {
+      if (data.info && typeof data.info === 'object') {
+        ['location', 'dateStart', 'dateEnd', 'purpose'].forEach(function (k) {
+          if (typeof data.info[k] === 'string') out.info[k] = data.info[k];
+        });
+      }
+      if (Array.isArray(data.logs) && data.logs.length) {
+        out.logs = data.logs.map(function (l) {
+          return {
+            date: (l && typeof l.date === 'string') ? l.date : '',
+            topic: (l && typeof l.topic === 'string') ? l.topic : '',
+            status: (l && typeof l.status === 'string') ? l.status : '',
+            restOverride: !!(l && l.restOverride)
+          };
+        });
+      }
+    }
+    return out;
+  }
+
+  // ---------- Date helpers ----------
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function toISO(y, m, d) { return y + '-' + pad2(m) + '-' + pad2(d); }
+  function parseISO(s) {
+    if (!s || typeof s !== 'string') return null;
+    var parts = s.split('-');
+    if (parts.length !== 3) return null;
+    var y = Number(parts[0]), m = Number(parts[1]), d = Number(parts[2]);
+    if (!y || !m || !d) return null;
+    var dt = new Date(y, m - 1, d);
+    if (isNaN(dt.getTime())) return null;
+    return dt;
+  }
+  function todayISO() {
+    var d = new Date();
+    return toISO(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  }
+  function formatDisplay(s) {
+    var d = parseISO(s);
+    if (!d) return '';
+    return d.getFullYear() + '/' + pad2(d.getMonth() + 1) + '/' + pad2(d.getDate());
+  }
+  function weekdayLabel(s) {
+    var d = parseISO(s);
+    if (!d) return '';
+    var labels = ['日', '一', '二', '三', '四', '五', '六'];
+    return '星期' + labels[d.getDay()];
+  }
+  function addDaysISO(s, n) {
+    var d = parseISO(s);
+    if (!d) return '';
+    d.setDate(d.getDate() + n);
+    return toISO(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  }
+  function daysInRangeISO(startISO, endISO) {
+    var start = parseISO(startISO), end = parseISO(endISO);
+    if (!start || !end || start > end) return null;
+    var out = [];
+    var cur = new Date(start.getTime());
+    while (cur <= end) {
+      out.push(toISO(cur.getFullYear(), cur.getMonth() + 1, cur.getDate()));
+      cur.setDate(cur.getDate() + 1);
+    }
+    return out;
+  }
+  function isSundayISO(s) {
+    var d = parseISO(s);
+    return !!d && d.getDay() === 0;
+  }
+  function makeEmptyLog(iso) {
+    return { date: iso, topic: isSundayISO(iso) ? '休息' : '', status: '', restOverride: false };
+  }
+
+  // ---------- IndexedDB ----------
+  function idbOpen() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore(IDB_STORE); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+  function idbSet(key, val) {
+    return idbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put(val, key);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+  function idbGet(key) {
+    return idbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(IDB_STORE, 'readonly');
+        var req = tx.objectStore(IDB_STORE).get(key);
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function () { reject(req.error); };
+      });
+    });
+  }
+
+  // ---------- Toast ----------
+  function toast(msg, isError, durationMs) {
+    var area = document.getElementById('toastArea');
+    var el = document.createElement('div');
+    el.className = 'toast' + (isError ? ' error' : '');
+    el.textContent = msg;
+    area.appendChild(el);
+    requestAnimationFrame(function () { el.classList.add('show'); });
+    setTimeout(function () {
+      el.classList.remove('show');
+      setTimeout(function () { el.remove(); }, 250);
+    }, durationMs || 2600);
+  }
+
+  // ---------- Persistence ----------
+  function saveToLocalStorage() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { console.error('localStorage save failed', e); }
+  }
+  function loadFromLocalStorage() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      if (!raw) return null;
+      return normalizeState(JSON.parse(raw));
+    } catch (e) { return null; }
+  }
+  function writeStateToFolder() {
+    if (!folderHandle || folderStatus !== 'connected') return Promise.resolve();
+    return folderHandle.getFileHandle('daily-log-data.json', { create: true })
+      .then(function (fh) { return fh.createWritable(); })
+      .then(function (writable) {
+        return writable.write(JSON.stringify(state, null, 2)).then(function () { return writable.close(); });
+      })
+      .catch(function (e) { console.error('write to folder failed', e); toast('寫入資料夾失敗，已保留在瀏覽器備援儲存', true); });
+  }
+  function updateSaveStatus(text) {
+    document.getElementById('saveStatus').textContent = text;
+  }
+  function persistAll() {
+    saveToLocalStorage();
+    var p = writeStateToFolder();
+    var now = new Date();
+    var timeStr = pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + ':' + pad2(now.getSeconds());
+    Promise.resolve(p).then(function () { updateSaveStatus('已自動儲存 ' + timeStr); });
+  }
+  function schedulePersist() {
+    updateSaveStatus('自動儲存中…');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(persistAll, 700);
+  }
+
+  // ---------- Folder connection ----------
+  function verifyPermission(handle, readWrite) {
+    var opts = readWrite ? { mode: 'readwrite' } : {};
+    return handle.queryPermission(opts).then(function (p) {
+      if (p === 'granted') return true;
+      return handle.requestPermission(opts).then(function (p2) { return p2 === 'granted'; });
+    });
+  }
+  function setFolderStatus(status) {
+    folderStatus = status;
+    var badge = document.getElementById('folderBadge');
+    var text = document.getElementById('folderBadgeText');
+    var hint = document.getElementById('folderHint');
+    badge.className = 'badge';
+    document.getElementById('btnChangeFolder').style.display = 'none';
+    document.getElementById('btnReconnectFolder').style.display = 'none';
+    document.getElementById('btnChooseFolder').style.display = 'none';
+
+    if (status === 'unsupported') {
+      badge.classList.add('unsupported');
+      text.textContent = '瀏覽器不支援';
+      hint.textContent = '此瀏覽器不支援本機資料夾存取（僅電腦版 Chrome / Edge / Opera 支援）。資料仍會安全儲存在本機瀏覽器中，建議定期使用「匯出備份 (JSON)」保存一份檔案。';
+    } else if (status === 'connected') {
+      badge.classList.add('connected');
+      text.textContent = '已連接';
+      hint.textContent = '每次存檔會自動寫入所選資料夾中的 daily-log-data.json。';
+      document.getElementById('btnChangeFolder').style.display = 'inline-flex';
+    } else if (status === 'reauth') {
+      badge.classList.add('reauth');
+      text.textContent = '需重新授權';
+      hint.textContent = '瀏覽器已重新啟動，請點擊「重新連接資料夾」以繼續寫入原本的資料夾。目前資料先儲存在瀏覽器本機。';
+      document.getElementById('btnReconnectFolder').style.display = 'inline-flex';
+      document.getElementById('btnChangeFolder').style.display = 'inline-flex';
+    } else {
+      text.textContent = '未連接';
+      hint.textContent = '建議選擇一個資料夾，之後每次存檔會自動寫入該資料夾，方便管理與備份。若不選擇，資料仍會保存在瀏覽器本機。';
+      document.getElementById('btnChooseFolder').style.display = 'inline-flex';
+    }
+  }
+
+  function loadFromFolder() {
+    return folderHandle.getFileHandle('daily-log-data.json')
+      .then(function (fh) { return fh.getFile(); })
+      .then(function (file) { return file.text(); })
+      .then(function (text) {
+        state = normalizeState(JSON.parse(text));
+        renderAll();
+        saveToLocalStorage();
+      })
+      .catch(function (e) {
+        if (e && e.name === 'NotFoundError') {
+          return writeStateToFolder();
+        }
+        console.error('load from folder failed', e);
+        toast('讀取資料夾內容失敗', true);
+      });
+  }
+
+  function chooseFolder() {
+    if (!window.showDirectoryPicker) return;
+    window.showDirectoryPicker().then(function (handle) {
+      return verifyPermission(handle, true).then(function (ok) {
+        if (!ok) { toast('未取得資料夾寫入權限', true); return; }
+        folderHandle = handle;
+        return idbSet(IDB_KEY, handle).then(function () {
+          setFolderStatus('connected');
+          return loadFromFolder();
+        });
+      });
+    }).catch(function (e) {
+      if (e && e.name === 'AbortError') return;
+      console.error('choose folder failed', e);
+      toast('選擇資料夾失敗', true);
+    });
+  }
+
+  function reconnectFolder() {
+    if (!folderHandle) return;
+    verifyPermission(folderHandle, true).then(function (ok) {
+      if (ok) {
+        setFolderStatus('connected');
+        loadFromFolder();
+        toast('已重新連接資料夾');
+      } else {
+        toast('未取得授權，仍無法寫入資料夾', true);
+      }
+    });
+  }
+
+  function initFolder() {
+    if (!window.showDirectoryPicker) {
+      setFolderStatus('unsupported');
+      return;
+    }
+    idbGet(IDB_KEY).then(function (handle) {
+      if (!handle) { setFolderStatus('none'); return; }
+      folderHandle = handle;
+      return handle.queryPermission({ mode: 'readwrite' }).then(function (perm) {
+        if (perm === 'granted') {
+          setFolderStatus('connected');
+          return loadFromFolder();
+        } else {
+          setFolderStatus('reauth');
+        }
+      });
+    }).catch(function (e) {
+      console.error('init folder failed', e);
+      setFolderStatus('none');
+    });
+  }
+
+  // ---------- Calendar popover ----------
+  var calPopover = document.getElementById('calPopover');
+
+  function openCalendar(opts) {
+    var base = parseISO(opts.value) || new Date();
+    calState = {
+      visible: true,
+      anchorEl: opts.anchorEl,
+      onSelect: opts.onSelect,
+      onClear: opts.onClear,
+      viewYear: base.getFullYear(),
+      viewMonth: base.getMonth() + 1,
+      selected: opts.value || ''
+    };
+    renderCalendar();
+    positionCalendar(opts.anchorEl);
+    calPopover.style.display = 'block';
+    document.addEventListener('mousedown', onDocClickForCalendar, true);
+    document.addEventListener('keydown', onKeyForCalendar, true);
+  }
+  function closeCalendar() {
+    calState.visible = false;
+    calPopover.style.display = 'none';
+    document.removeEventListener('mousedown', onDocClickForCalendar, true);
+    document.removeEventListener('keydown', onKeyForCalendar, true);
+  }
+  function onDocClickForCalendar(e) {
+    if (!calState.visible) return;
+    if (calPopover.contains(e.target)) return;
+    if (calState.anchorEl && calState.anchorEl.contains(e.target)) return;
+    closeCalendar();
+  }
+  function onKeyForCalendar(e) {
+    if (e.key === 'Escape') closeCalendar();
+  }
+  function positionCalendar(anchorEl) {
+    var rect = anchorEl.getBoundingClientRect();
+    var popW = 260, popH = 320;
+    var top = rect.bottom + 6;
+    var left = rect.left;
+    if (left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8;
+    if (left < 8) left = 8;
+    if (top + popH > window.innerHeight - 8) top = rect.top - popH - 6;
+    if (top < 8) top = 8;
+    calPopover.style.top = top + 'px';
+    calPopover.style.left = left + 'px';
+  }
+  function renderCalendar() {
+    document.getElementById('calTitle').textContent = calState.viewYear + ' 年 ' + calState.viewMonth + ' 月';
+    var grid = document.getElementById('calGrid');
+    grid.innerHTML = '';
+    ['日', '一', '二', '三', '四', '五', '六'].forEach(function (w) {
+      var el = document.createElement('div');
+      el.className = 'cal-wd';
+      el.textContent = w;
+      grid.appendChild(el);
+    });
+    var first = new Date(calState.viewYear, calState.viewMonth - 1, 1);
+    var startOffset = first.getDay();
+    var daysInMonth = new Date(calState.viewYear, calState.viewMonth, 0).getDate();
+    var today = todayISO();
+    for (var i = 0; i < startOffset; i++) {
+      grid.appendChild(document.createElement('div'));
+    }
+    for (var d = 1; d <= daysInMonth; d++) {
+      var iso = toISO(calState.viewYear, calState.viewMonth, d);
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cal-day';
+      btn.textContent = String(d);
+      if (iso === today) btn.classList.add('today');
+      if (iso === calState.selected) btn.classList.add('selected');
+      (function (isoDate) {
+        btn.addEventListener('click', function () {
+          if (calState.onSelect) calState.onSelect(isoDate);
+          closeCalendar();
+        });
+      })(iso);
+      grid.appendChild(btn);
+    }
+  }
+  document.getElementById('calPrev').addEventListener('click', function () {
+    calState.viewMonth--;
+    if (calState.viewMonth < 1) { calState.viewMonth = 12; calState.viewYear--; }
+    renderCalendar();
+  });
+  document.getElementById('calNext').addEventListener('click', function () {
+    calState.viewMonth++;
+    if (calState.viewMonth > 12) { calState.viewMonth = 1; calState.viewYear++; }
+    renderCalendar();
+  });
+  document.getElementById('calToday').addEventListener('click', function () {
+    var iso = todayISO();
+    if (calState.onSelect) calState.onSelect(iso);
+    closeCalendar();
+  });
+  document.getElementById('calClear').addEventListener('click', function () {
+    if (calState.onClear) calState.onClear();
+    closeCalendar();
+  });
+
+  // ---------- 說明小圖示（點擊彈出，非 hover，觸控裝置也能用） ----------
+  var helpPopover = document.getElementById('helpPopover');
+  var activeHelpIcon = null;
+
+  function openHelp(iconEl) {
+    var tpl = document.getElementById(iconEl.getAttribute('data-help-for'));
+    helpPopover.textContent = tpl ? tpl.content ? tpl.content.textContent : tpl.textContent : '';
+    var rect = iconEl.getBoundingClientRect();
+    var popW = 260;
+    var left = rect.left - popW + rect.width;
+    if (left < 8) left = 8;
+    if (left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8;
+    var top = rect.bottom + 6;
+    helpPopover.style.left = left + 'px';
+    helpPopover.style.top = top + 'px';
+    helpPopover.style.display = 'block';
+    if (activeHelpIcon) activeHelpIcon.classList.remove('active');
+    activeHelpIcon = iconEl;
+    activeHelpIcon.classList.add('active');
+  }
+  function closeHelp() {
+    helpPopover.style.display = 'none';
+    if (activeHelpIcon) activeHelpIcon.classList.remove('active');
+    activeHelpIcon = null;
+  }
+  document.querySelectorAll('.help-icon').forEach(function (icon) {
+    icon.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (activeHelpIcon === icon) { closeHelp(); return; }
+      openHelp(icon);
+    });
+  });
+  document.addEventListener('mousedown', function (e) {
+    if (!activeHelpIcon) return;
+    if (helpPopover.contains(e.target) || e.target === activeHelpIcon) return;
+    closeHelp();
+  }, true);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeHelp();
+  }, true);
+
+  // ---------- Trip info rendering ----------
+  var fLocation = document.getElementById('fLocation');
+  var fPurpose = document.getElementById('fPurpose');
+  var fDateStart = document.getElementById('fDateStart');
+  var fDateEnd = document.getElementById('fDateEnd');
+
+  function renderInfo() {
+    fLocation.value = state.info.location;
+    fPurpose.value = state.info.purpose;
+    updateDateTrigger(fDateStart, state.info.dateStart);
+    updateDateTrigger(fDateEnd, state.info.dateEnd);
+  }
+  function updateDateTrigger(btn, iso) {
+    if (iso) {
+      btn.textContent = formatDisplay(iso);
+      btn.classList.remove('placeholder');
+    } else {
+      btn.textContent = '請選擇日期';
+      btn.classList.add('placeholder');
+    }
+  }
+  [fLocation, fPurpose].forEach(function (el) {
+    el.addEventListener('input', function () {
+      var key = el === fLocation ? 'location' : 'purpose';
+      state.info[key] = el.value;
+      schedulePersist();
+    });
+  });
+  fDateStart.addEventListener('click', function () {
+    openCalendar({
+      value: state.info.dateStart,
+      anchorEl: fDateStart,
+      onSelect: function (iso) { state.info.dateStart = iso; updateDateTrigger(fDateStart, iso); syncLogsToTripPeriod(); schedulePersist(); },
+      onClear: function () { state.info.dateStart = ''; updateDateTrigger(fDateStart, ''); schedulePersist(); }
+    });
+  });
+  fDateEnd.addEventListener('click', function () {
+    openCalendar({
+      value: state.info.dateEnd,
+      anchorEl: fDateEnd,
+      onSelect: function (iso) { state.info.dateEnd = iso; updateDateTrigger(fDateEnd, iso); syncLogsToTripPeriod(); schedulePersist(); },
+      onClear: function () { state.info.dateEnd = ''; updateDateTrigger(fDateEnd, ''); schedulePersist(); }
+    });
+  });
+
+  // 出差期間一經完整選定，每日紀錄即依該期間逐日展開；已填寫的內容依日期保留。
+  function syncLogsToTripPeriod() {
+    var dates = daysInRangeISO(state.info.dateStart, state.info.dateEnd);
+    if (!dates) return;
+    if (dates.length > 60 && !confirm('出差期間長達 ' + dates.length + ' 天，確定要依此期間產生每日紀錄嗎？')) return;
+
+    var byDate = {};
+    state.logs.forEach(function (l) { if (l.date && !byDate[l.date]) byDate[l.date] = l; });
+
+    var newLogs = dates.map(function (d) {
+      var existing = byDate[d];
+      return existing ? { date: d, topic: existing.topic, status: existing.status, restOverride: !!existing.restOverride } : makeEmptyLog(d);
+    });
+
+    var usedDates = {};
+    dates.forEach(function (d) { usedDates[d] = true; });
+    var leftover = state.logs.filter(function (l) {
+      if (l.date && usedDates[l.date]) return false;
+      var isAutoRestDefault = isSundayISO(l.date) && !l.restOverride && l.topic === '休息' && !l.status;
+      if (isAutoRestDefault) return false;
+      return !!(l.topic || l.status);
+    });
+
+    newLogs = newLogs.concat(leftover);
+    state.logs = newLogs;
+    renderTable();
+    toast('已依出差期間產生每日紀錄（共 ' + dates.length + ' 天）' + (leftover.length ? '，另保留 ' + leftover.length + ' 筆期間外紀錄' : ''));
+  }
+
+  // ---------- Log table rendering ----------
+  var logBody = document.getElementById('logBody');
+
+  function renderTable() {
+    logBody.innerHTML = '';
+    state.logs.forEach(function (log, index) {
+      logBody.appendChild(buildRow(log, index));
+    });
+  }
+
+  // 週日預設 Topic 為「休息」且鎖定；勾選「自行編輯」才能修改內容。
+  function renderTopicCell(tdTopic, index) {
+    tdTopic.innerHTML = '';
+    var log = state.logs[index];
+    var sunday = isSundayISO(log.date);
+
+    var topicInput = document.createElement('input');
+    topicInput.type = 'text';
+
+    if (sunday) {
+      var toggleLabel = document.createElement('label');
+      toggleLabel.className = 'rest-toggle';
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = !!log.restOverride;
+      var toggleText = document.createElement('span');
+      toggleText.textContent = '自行編輯';
+      toggleLabel.appendChild(checkbox);
+      toggleLabel.appendChild(toggleText);
+      tdTopic.appendChild(toggleLabel);
+
+      checkbox.addEventListener('change', function () {
+        if (!checkbox.checked) {
+          var current = state.logs[index].topic;
+          if (current && current !== '休息' && !confirm('取消勾選將把 Topic 還原為「休息」，目前輸入的內容將會遺失，確定嗎？')) {
+            checkbox.checked = true;
+            return;
+          }
+          state.logs[index].restOverride = false;
+          state.logs[index].topic = '休息';
+          topicInput.disabled = true;
+          topicInput.value = '休息';
+        } else {
+          state.logs[index].restOverride = true;
+          if (state.logs[index].topic === '休息') state.logs[index].topic = '';
+          topicInput.disabled = false;
+          topicInput.value = state.logs[index].topic;
+          topicInput.focus();
+        }
+        schedulePersist();
+      });
+
+      if (!log.restOverride) {
+        topicInput.value = '休息';
+        topicInput.disabled = true;
+      } else {
+        topicInput.value = log.topic;
+      }
+    } else {
+      topicInput.value = log.topic;
+    }
+
+    topicInput.addEventListener('input', function () {
+      state.logs[index].topic = topicInput.value;
+      schedulePersist();
+    });
+    tdTopic.appendChild(topicInput);
+  }
+
+  function buildRow(log, index) {
+    var tr = document.createElement('tr');
+
+    var tdNo = document.createElement('td');
+    tdNo.className = 'col-no';
+    tdNo.setAttribute('data-label', 'No.');
+    tdNo.textContent = String(index + 1);
+    tr.appendChild(tdNo);
+
+    var tdTopic = document.createElement('td');
+    tdTopic.className = 'col-topic';
+    tdTopic.setAttribute('data-label', 'Topic');
+
+    var tdDate = document.createElement('td');
+    tdDate.className = 'col-date';
+    tdDate.setAttribute('data-label', '日期');
+    var dateBtn = document.createElement('button');
+    dateBtn.type = 'button';
+    dateBtn.className = 'date-trigger';
+    updateDateTrigger(dateBtn, log.date);
+    dateBtn.addEventListener('click', function () {
+      openCalendar({
+        value: log.date,
+        anchorEl: dateBtn,
+        onSelect: function (iso) {
+          state.logs[index].date = iso;
+          updateDateTrigger(dateBtn, iso);
+          weekdayCell.textContent = weekdayLabel(iso);
+          renderTopicCell(tdTopic, index);
+          schedulePersist();
+        },
+        onClear: function () {
+          state.logs[index].date = '';
+          updateDateTrigger(dateBtn, '');
+          weekdayCell.textContent = '';
+          renderTopicCell(tdTopic, index);
+          schedulePersist();
+        }
+      });
+    });
+    tdDate.appendChild(dateBtn);
+    tr.appendChild(tdDate);
+
+    var tdWeekday = document.createElement('td');
+    tdWeekday.className = 'col-weekday';
+    tdWeekday.setAttribute('data-label', '星期');
+    var weekdayCell = tdWeekday;
+    tdWeekday.textContent = weekdayLabel(log.date);
+    tr.appendChild(tdWeekday);
+
+    renderTopicCell(tdTopic, index);
+    tr.appendChild(tdTopic);
+
+    var tdStatus = document.createElement('td');
+    tdStatus.className = 'col-status';
+    tdStatus.setAttribute('data-label', 'Status Description');
+    var statusInput = document.createElement('textarea');
+    statusInput.rows = 2;
+    statusInput.value = log.status;
+    statusInput.addEventListener('input', function () {
+      state.logs[index].status = statusInput.value;
+      schedulePersist();
+    });
+    tdStatus.appendChild(statusInput);
+    tr.appendChild(tdStatus);
+
+    var tdDel = document.createElement('td');
+    tdDel.className = 'col-del';
+    tdDel.setAttribute('data-label', '');
+    var delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'btn-icon-round';
+    delBtn.title = '刪除這一列';
+    delBtn.textContent = '−';
+    delBtn.addEventListener('click', function () {
+      var l = state.logs[index];
+      var hasContent = l.date || l.topic || l.status;
+      if (hasContent && !confirm('確定要刪除第 ' + (index + 1) + ' 列的紀錄嗎？')) return;
+      state.logs.splice(index, 1);
+      if (state.logs.length === 0) state.logs.push(makeEmptyLog(''));
+      renderTable();
+      schedulePersist();
+    });
+    tdDel.appendChild(delBtn);
+    tr.appendChild(tdDel);
+
+    return tr;
+  }
+
+  document.getElementById('btnAddRow').addEventListener('click', function () {
+    var last = state.logs[state.logs.length - 1];
+    var nextDate = last && last.date ? addDaysISO(last.date, 1) : '';
+    state.logs.push(makeEmptyLog(nextDate));
+    renderTable();
+    schedulePersist();
+  });
+
+  function renderAll() {
+    renderInfo();
+    renderTable();
+  }
+
+  // ---------- Toolbar actions ----------
+
+  document.getElementById('btnExportBackup').addEventListener('click', function () {
+    var blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'daily-log-backup_' + todayISO() + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast('已匯出備份 JSON');
+  });
+
+  var importFileInput = document.getElementById('importFileInput');
+  document.getElementById('btnImportBackup').addEventListener('click', function () {
+    importFileInput.value = '';
+    importFileInput.click();
+  });
+  importFileInput.addEventListener('change', function () {
+    var file = importFileInput.files[0];
+    if (!file) return;
+    if (!confirm('匯入備份將覆蓋目前畫面上的資料，確定要繼續嗎？')) return;
+    file.text().then(function (text) {
+      var data = JSON.parse(text);
+      state = normalizeState(data);
+      renderAll();
+      persistAll();
+      toast('已匯入備份');
+    }).catch(function (e) {
+      console.error('import failed', e);
+      toast('匯入失敗，檔案格式不正確', true);
+    });
+  });
+
+  document.getElementById('btnClearAll').addEventListener('click', function () {
+    if (!confirm('確定要清空所有出差資訊與每日紀錄嗎？此動作無法復原。')) return;
+    state = defaultState();
+    renderAll();
+    persistAll();
+    toast('已清空所有資料');
+  });
+
+  // 同一天內多次匯出時，檔名依序附加 -1、-2、-3……避免同名檔案互相覆蓋或搞混新舊版本。
+  var EXPORT_COUNT_KEY = 'biz-trip-daily-log:export-count:v1';
+  function nextExportSuffix() {
+    var today = todayISO();
+    var rec = null;
+    try {
+      var raw = localStorage.getItem(EXPORT_COUNT_KEY);
+      if (raw) rec = JSON.parse(raw);
+    } catch (e) { rec = null; }
+    if (!rec || rec.date !== today) rec = { date: today, count: 0 };
+    rec.count += 1;
+    try { localStorage.setItem(EXPORT_COUNT_KEY, JSON.stringify(rec)); } catch (e) { /* 儲存失敗時本次不編號，不影響匯出本身 */ }
+    return rec.count > 1 ? ('-' + (rec.count - 1)) : '';
+  }
+
+  // ---------- 匯出結果確認視窗（比 toast 更明確，需要使用者按確認才會關閉） ----------
+  var exportModal = document.getElementById('exportModal');
+  function showExportModal(title, message, isError) {
+    document.getElementById('exportModalTitle').textContent = title;
+    document.getElementById('exportModalMsg').textContent = message;
+    var icon = document.getElementById('exportModalIcon');
+    icon.textContent = isError ? '!' : '✓';
+    icon.classList.toggle('error', !!isError);
+    exportModal.classList.add('show');
+  }
+  function closeExportModal() { exportModal.classList.remove('show'); }
+  document.getElementById('exportModalOk').addEventListener('click', closeExportModal);
+  exportModal.addEventListener('click', function (e) { if (e.target === exportModal) closeExportModal(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && exportModal.classList.contains('show')) closeExportModal();
+  }, true);
+
+  document.getElementById('btnExportExcel').addEventListener('click', function () {
+    if (typeof ExcelJS === 'undefined') {
+      showExportModal('匯出失敗', '尚未載入 Excel 匯出套件，請確認網路連線後再試一次。', true);
+      return;
+    }
+    var filenameBase = '出差工作日誌_' + (state.info.location || '未命名') + '_' + todayISO() + nextExportSuffix();
+    var filename = filenameBase + '.xlsx';
+    buildWorkbook().xlsx.writeBuffer().then(function (buffer) {
+      if (folderHandle && folderStatus === 'connected') {
+        folderHandle.getFileHandle(filename, { create: true })
+          .then(function (fh) { return fh.createWritable(); })
+          .then(function (writable) { return writable.write(buffer).then(function () { return writable.close(); }); })
+          .then(function () { showExportModal('已完成匯出', '檔案已寫入你選擇的本機資料夾：\n' + filename); })
+          .catch(function (e) {
+            console.error('export to folder failed', e);
+            downloadExcelBuffer(buffer, filename);
+            showExportModal('已完成匯出（改為瀏覽器下載）', '寫入資料夾失敗，已改用瀏覽器下載：\n' + filename, true);
+          });
+      } else {
+        downloadExcelBuffer(buffer, filename);
+        showExportModal('已完成匯出', '檔案已下載至瀏覽器的下載資料夾：\n' + filename);
+      }
+    }).catch(function (e) {
+      console.error('build workbook failed', e);
+      showExportModal('匯出失敗', '產生 Excel 檔案時發生錯誤，請再試一次。', true);
+    });
+  });
+
+  function downloadExcelBuffer(buffer, filename) {
+    var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // 估算字串顯示寬度（全形字元約佔 2 個半形字元寬度），用來決定欄寬與是否需要換行。
+  function displayWidth(str) {
+    str = String(str == null ? '' : str);
+    var w = 0;
+    for (var i = 0; i < str.length; i++) {
+      w += str.charCodeAt(i) > 255 ? 2 : 1;
+    }
+    return w;
+  }
+
+  function buildWorkbook() {
+    var wb = new ExcelJS.Workbook();
+    var ws = wb.addWorksheet('出差日誌');
+
+    var FONT_NAME = '標楷體';
+    var CENTER = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    var CENTER_NOWRAP = { horizontal: 'center', vertical: 'middle', wrapText: false };
+    var THIN = { style: 'thin', color: { argb: 'FF999080' } };
+    var BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+    var HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE3D0' } };
+    var ZEBRA_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFEEEA' } };
+
+    // No. / Date / 星期 / Topic / Status Description
+    // BASE：一律套用的最小欄寬（No./Date/星期是固定格式，不換行，寬度需夠寬一次容納）。
+    // CAP：Topic／Status 內容超過這個寬度才換行、並自動加高列高。
+    var COL_BASE = [8, 16, 10, 22, 55];
+    var COL_CAP = [8, 16, 10, 34, 90];
+    var COL_WRAP = [false, false, false, true, true];
+
+    ws.getColumn(1).width = COL_BASE[0];
+    ws.getColumn(2).width = COL_BASE[1];
+    ws.getColumn(3).width = COL_BASE[2];
+    ws.getColumn(4).width = COL_BASE[3];
+    ws.getColumn(5).width = COL_BASE[4];
+
+    function styleCell(cell, colIndex, opts) {
+      opts = opts || {};
+      cell.font = { name: FONT_NAME, size: opts.size || 11, bold: !!opts.bold };
+      cell.alignment = (colIndex != null && COL_WRAP[colIndex] === false) ? CENTER_NOWRAP : CENTER;
+      cell.border = BORDER;
+      if (opts.fill) cell.fill = opts.fill;
+    }
+
+    // 標題列
+    ws.mergeCells('A1:E1');
+    var titleCell = ws.getCell('A1');
+    titleCell.value = '出差工作日誌';
+    styleCell(titleCell, null, { bold: true, size: 16 });
+
+    var infoRows = [
+      ['出差地點', state.info.location],
+      ['出差期間', (state.info.dateStart ? formatDisplay(state.info.dateStart) : '') + ' ~ ' + (state.info.dateEnd ? formatDisplay(state.info.dateEnd) : '')],
+      ['出差目的', state.info.purpose]
+    ];
+    infoRows.forEach(function (pair, i) {
+      var r = i + 2;
+      ws.mergeCells('B' + r + ':E' + r);
+      var labelCell = ws.getCell('A' + r);
+      labelCell.value = pair[0];
+      styleCell(labelCell, null, { bold: true });
+      var valueCell = ws.getCell('B' + r);
+      valueCell.value = pair[1];
+      styleCell(valueCell, null);
+    });
+
+    var headerRowIndex = 6;
+    var headers = ['No.', 'Date', '星期', 'Topic', 'Status Description'];
+    var headerRow = ws.getRow(headerRowIndex);
+    headers.forEach(function (h, i) {
+      var cell = headerRow.getCell(i + 1);
+      cell.value = h;
+      styleCell(cell, i, { bold: true, fill: HEADER_FILL });
+    });
+
+    var colMax = headers.map(function (h, i) { return COL_WRAP[i] ? displayWidth(h) : 0; });
+
+    state.logs.forEach(function (log, i) {
+      var r = headerRowIndex + 1 + i;
+      var values = [i + 1, log.date ? formatDisplay(log.date) : '', weekdayLabel(log.date), log.topic, log.status];
+      var isEven = (i + 1) % 2 === 0;
+      var row = ws.getRow(r);
+      var maxLines = 1;
+      values.forEach(function (v, c) {
+        var cell = row.getCell(c + 1);
+        cell.value = v;
+        styleCell(cell, c, isEven ? { fill: ZEBRA_FILL } : {});
+        if (COL_WRAP[c]) {
+          colMax[c] = Math.max(colMax[c], displayWidth(v));
+          var lines = Math.max(1, Math.ceil(displayWidth(v) / COL_CAP[c]));
+          if (lines > maxLines) maxLines = lines;
+        }
+      });
+      row.height = Math.max(18, maxLines * 16 + 6);
+    });
+
+    // Topic／Status Description：內容比預設欄寬還寬時才加寬（上限 CAP），維持固定欄不動。
+    [3, 4].forEach(function (c) {
+      var needed = Math.min(Math.max(colMax[c] + 2, COL_BASE[c]), COL_CAP[c]);
+      ws.getColumn(c + 1).width = needed;
+    });
+
+    return wb;
+  }
+
+  // ---------- Folder buttons ----------
+  document.getElementById('btnChooseFolder').addEventListener('click', chooseFolder);
+  document.getElementById('btnChangeFolder').addEventListener('click', chooseFolder);
+  document.getElementById('btnReconnectFolder').addEventListener('click', reconnectFolder);
+
+  // ---------- Init ----------
+  (function init() {
+    if (accessConfig.allowed === false) {
+      document.getElementById('appRoot').style.display = 'none';
+      var gate = document.getElementById('accessGate');
+      if (accessConfig.message) document.getElementById('accessGateMsg').textContent = accessConfig.message;
+      gate.style.display = 'block';
+      return;
+    }
+    var local = loadFromLocalStorage();
+    if (local) state = local;
+    renderAll();
+    initFolder();
+    updateSaveStatus('');
+  })();
+})();
+</script>
+</body>
+</html>

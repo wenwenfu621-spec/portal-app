@@ -117,6 +117,12 @@ _bootstrap_database()
 # 這行常數即可。
 ADMIN_EMPLOYEE_IDS = {"ETW00375"}
 
+# 「出差工作日誌」是分階段上線（staged rollout）的新功能，目前只給測試名單裡的
+# 員工編號看得到選單入口——這裡的選單顯示判斷「不是」實際的安全邊界，真正擋非
+# 測試帳號的關卡在 pages/4_出差工作日誌.py 頁面自己的伺服器端檢查（直接用網址
+# 連過去也會被擋）。測試完成、要開放給全體同仁時，把這個白名單判斷拿掉即可。
+TRIP_DAILY_LOG_TESTERS = {"ETW00375"}
+
 
 def _inject_background_css(image_path: Path) -> None:
     image_b64 = base64.b64encode(image_path.read_bytes()).decode("utf-8")
@@ -268,6 +274,7 @@ input[aria-label="帳號（員工編號）"] {
 .st-key-menu_card div[data-testid="stPageLink"] a[href*="私車公用報支"] { border-left-color: #22d3ee; }
 .st-key-menu_card div[data-testid="stPageLink"] a[href*="出差申報"] { border-left-color: #818cf8; }
 .st-key-menu_card div[data-testid="stPageLink"] a[href*="管理員維護區"] { border-left-color: #fb923c; }
+.st-key-menu_card div[data-testid="stPageLink"] a[href*="出差工作日誌"] { border-left-color: #a4573a; }
 </style>
 """
 
@@ -346,6 +353,8 @@ def render_menu() -> None:
         )
         st.page_link("pages/1_私車公用報支.py", label="🚗 私車公用報支", width="stretch")
         st.page_link("pages/2_出差申報.py", label="🧳 出差申報", width="stretch")
+        if st.session_state.get("employee_id") in TRIP_DAILY_LOG_TESTERS:
+            st.page_link("pages/4_出差工作日誌.py", label="📝 出差工作日誌", width="stretch")
         if st.session_state.get("employee_id") in ADMIN_EMPLOYEE_IDS:
             st.page_link("pages/3_管理員維護區.py", label="🛠️ 管理員維護區", width="stretch")
 
