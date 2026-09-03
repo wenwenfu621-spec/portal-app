@@ -153,7 +153,7 @@
   .table-empty-msg { color: var(--text-faint); font-size: 13px; padding: 10px 2px; }
 
   .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
-  table.pn-table { width: 100%; border-collapse: collapse; min-width: 760px; table-layout: auto; }
+  table.pn-table { width: 100%; border-collapse: collapse; min-width: 780px; table-layout: auto; }
   /* column order: 1 Item, 2 類型, 3 P/N, 4 Description, 5 Q'Ty, 6 Usage, 7 生產地, 8 delete.
      類型/Description/Q'Ty/Usage/生產地 each keep a protected minimum; P/N has none, so
      it's the column that gives way first when the others need more room. */
@@ -161,7 +161,7 @@
   table.pn-table th:nth-child(3), table.pn-table td:nth-child(3) { min-width: 100px; }
   table.pn-table th:nth-child(4), table.pn-table td:nth-child(4) { min-width: 170px; }
   table.pn-table th:nth-child(5), table.pn-table td:nth-child(5) { min-width: 64px; }
-  table.pn-table th:nth-child(6), table.pn-table td:nth-child(6) { min-width: 100px; }
+  table.pn-table th:nth-child(6), table.pn-table td:nth-child(6) { min-width: 120px; }
   table.pn-table th:nth-child(7), table.pn-table td:nth-child(7) { min-width: 124px; }
   table.pn-table th {
     text-align: center; font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase;
@@ -181,6 +181,12 @@
   table.pn-table td.site-cell .site-wrap input[type="text"] { flex: 1; width: auto; min-width: 0; }
   table.pn-table td.site-cell input.auto-filled { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); font-weight: 600; }
   table.pn-table td.site-cell input:disabled { cursor: not-allowed; opacity: 0.9; }
+
+  .usage-wrap { display: flex; align-items: center; gap: 7px; }
+  .usage-wrap .usage-auto-toggle { flex: none; width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  table.pn-table td.usage-cell .usage-wrap input[type="number"] { flex: 1; width: auto; min-width: 0; }
+  table.pn-table td.usage-cell input.auto-filled { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); font-weight: 600; }
+  table.pn-table td.usage-cell input:disabled { cursor: not-allowed; opacity: 0.9; }
   table.pn-table td.del-cell { width: 34px; text-align: center; }
   .row-del { background: transparent; border: none; color: var(--text-faint); font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 5px; }
   .row-del:hover { color: var(--danger); background: var(--danger-soft); }
@@ -236,7 +242,8 @@
       <div class="panel-head"><span class="step">§2</span><h2>出貨階明細表</h2></div>
       <p class="panel-note" style="margin-top:-8px; margin-bottom: 12px;">
         每按一次「+ 新增料號」會新增一列<strong>獨立的出貨階</strong>，可個別刪除。
-        生產地欄位（第一列以外）左側有勾選框：打勾＝與上一列生產地相同；取消勾選即可自行輸入。
+        Usage 欄位左側有勾選框：打勾＝依 Forecast 的 Per Month × Q'Ty 自動算出（底色標示、欄位鎖定唯讀）；取消勾選即可手動輸入/修改。
+        生產地欄位（第一列以外）左側也有勾選框：打勾＝與上一列生產地相同；取消勾選即可自行輸入。
       </p>
       <div class="table-scroll">
         <table class="pn-table">
@@ -312,7 +319,14 @@
     toast: document.getElementById("toast")
   };
 
-  function makeManualRow() { return { type: "", pn: "", desc: "", qty: "", usage: "", site: "", siteSameAsAbove: false }; }
+  function makeManualRow() { return { type: "", pn: "", desc: "", qty: "", usage: "", usageAuto: true, site: "", siteSameAsAbove: false }; }
+
+  // Usage (Per Rack) = Forecast 的 Per Month × 這一列的 Q'Ty. Always a number (0 when
+  // either input is blank/0), never null -- this formula doesn't depend on anything
+  // row-specific besides Q'Ty, so there's no "not applicable yet" case to guard against.
+  function calcUsageFromForecast(row) {
+    return num(state.forecastPerMonth) * num(row.qty);
+  }
 
   // resolves a row's displayed 生產地, following the "同上" chain upward to the
   // nearest row that has its own value typed in
@@ -387,20 +401,60 @@
         tr.appendChild(td);
       });
 
+      var usageInput; // referenced by the qty handler below to live-update the computed default
+
       var tdQty = document.createElement("td");
       var qtyInput = document.createElement("input");
       qtyInput.type = "number"; qtyInput.min = "0"; qtyInput.placeholder = "0";
       qtyInput.value = row.qty;
-      qtyInput.addEventListener("input", function () { row.qty = qtyInput.value; saveState(); });
+      qtyInput.addEventListener("input", function () {
+        row.qty = qtyInput.value;
+        if (row.usageAuto !== false) {
+          row.usage = String(calcUsageFromForecast(row));
+          usageInput.value = row.usage;
+        }
+        saveState();
+      });
       tdQty.appendChild(qtyInput);
       tr.appendChild(tdQty);
 
+      // pre-fill the computed default when this row is in auto mode
+      if (row.usageAuto !== false) {
+        row.usage = String(calcUsageFromForecast(row));
+      }
+
       var tdUsage = document.createElement("td");
-      var usageInput = document.createElement("input");
+      tdUsage.className = "usage-cell";
+      var usageWrap = document.createElement("div");
+      usageWrap.className = "usage-wrap";
+
+      var autoToggle = document.createElement("input");
+      autoToggle.type = "checkbox";
+      autoToggle.className = "usage-auto-toggle";
+      autoToggle.title = "打勾＝依 Per Month × Q'Ty 自動算出；取消勾選＝手動輸入";
+      autoToggle.checked = row.usageAuto !== false;
+      autoToggle.addEventListener("change", function () {
+        row.usageAuto = autoToggle.checked;
+        if (row.usageAuto) row.usage = String(calcUsageFromForecast(row));
+        saveState();
+        renderAll();
+      });
+      usageWrap.appendChild(autoToggle);
+
+      var isAutoUsage = row.usageAuto !== false;
+      usageInput = document.createElement("input");
       usageInput.type = "number"; usageInput.min = "0"; usageInput.placeholder = "0";
       usageInput.value = row.usage;
-      usageInput.addEventListener("input", function () { row.usage = usageInput.value; saveState(); });
-      tdUsage.appendChild(usageInput);
+      usageInput.disabled = isAutoUsage;
+      usageInput.classList.toggle("auto-filled", isAutoUsage);
+      usageInput.title = isAutoUsage ? "依 Per Month × Q'Ty 自動算出，取消左側勾選可改手動輸入" : "手動輸入";
+      usageInput.addEventListener("input", function () {
+        row.usage = usageInput.value;
+        saveState();
+      });
+      usageWrap.appendChild(usageInput);
+
+      tdUsage.appendChild(usageWrap);
       tr.appendChild(tdUsage);
 
       var tdSite = document.createElement("td");
@@ -476,6 +530,7 @@
       el.forecastPerMonth.value = "";
     }
     saveState();
+    renderStageTable(); // Usage auto-rows depend on Per Month
   });
   el.forecastPerMonth.addEventListener("input", function () {
     state.forecastPerMonth = el.forecastPerMonth.value;
@@ -488,6 +543,7 @@
       el.forecastPerYear.value = "";
     }
     saveState();
+    renderStageTable(); // Usage auto-rows depend on Per Month
   });
 
   el.addRowBtn.addEventListener("click", function () {
