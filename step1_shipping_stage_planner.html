@@ -152,6 +152,21 @@
 
   .table-empty-msg { color: var(--text-faint); font-size: 13px; padding: 10px 2px; }
 
+  .bom-group { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+  .bom-group-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--surface-2); font-size: 13px; }
+  .bom-group-head .pn-tag { font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
+  .bom-group-head .badge { font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 600; }
+  .bom-group-head .badge.matched { background: var(--accent-soft); color: var(--accent-strong); }
+  .bom-group-head .badge.unmatched { background: var(--warn-soft); color: var(--warn-strong); }
+  .bom-group table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .bom-group th { text-align: left; padding: 6px 10px; color: var(--text-faint); font-weight: 600; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .bom-group td { padding: 5px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .bom-group tr:last-child td { border-bottom: none; }
+  .bom-group td.metal-tag { font-weight: 600; }
+  .bom-group td.metal-tag.iron { color: var(--warn-strong); }
+  .bom-group td.metal-tag.plastic { color: var(--accent-strong); }
+  .bom-error { color: var(--danger); font-size: 13px; padding: 8px 2px; }
+
   .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
   table.pn-table { width: 100%; border-collapse: collapse; min-width: 780px; table-layout: auto; }
   /* column order: 1 Item, 2 類型, 3 P/N, 4 Description, 5 Q'Ty, 6 Usage, 7 生產地, 8 delete.
@@ -196,6 +211,21 @@
     border-radius: 7px; padding: 6px 12px; font-size: 12.5px;
   }
   .add-row-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+  .row-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .row-actions .add-row-btn { margin-top: 0; }
+
+  table.excel-preview-table { border-collapse: collapse; font-size: 12.5px; min-width: 1400px; }
+  table.excel-preview-table caption {
+    caption-side: top; text-align: left; font-weight: 600; font-size: 14px;
+    padding: 4px 2px 10px; color: var(--text);
+  }
+  table.excel-preview-table th, table.excel-preview-table td {
+    border: 1px solid var(--border); padding: 6px 9px; white-space: nowrap; text-align: center;
+  }
+  table.excel-preview-table thead th { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+  table.excel-preview-table .preview-info-row td { text-align: left; }
+  table.excel-preview-table .preview-info-row td.preview-info-label { font-weight: 600; white-space: nowrap; width: 1%; }
+  table.excel-preview-table tbody tr.preview-zebra td { background: var(--surface-2); }
 </style>
 
 <div class="app">
@@ -254,7 +284,25 @@
         </table>
       </div>
       <p class="table-empty-msg" id="noStageMsg" style="display:none;">尚未有任何出貨階，請按下方「+ 新增料號」開始新增。</p>
-      <button class="add-row-btn" id="addRowBtn" type="button">+ 新增料號</button>
+      <div class="row-actions">
+        <button class="add-row-btn" id="addRowBtn" type="button">+ 新增料號</button>
+        <button class="add-row-btn" id="previewBtn" type="button">產生 Excel 預覽</button>
+      </div>
+      <div class="table-scroll" id="excelPreviewWrap" style="display:none; margin-top: 12px;"></div>
+      <p class="table-empty-msg" id="previewEmptyMsg" style="display:none;">尚未有任何出貨階，沒有內容可以預覽。</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><span class="step">§3</span><h2>Step 2（第一階段）：BOM 比對</h2></div>
+      <p class="panel-note" style="margin-top:-8px; margin-bottom: 12px;">
+        上傳客戶 BOM（.xlsx 或 .xls），用上方 §2 明細表每一列的 P/N 去比對 BOM 的「客戶料號」欄位，
+        找到後展開該筆底下的子項目樹。<strong>目前只做到「比對＋展開＋顯示」，機台噸位/工程數解析與需求統計還沒開始做。</strong>
+      </p>
+      <div class="field-row" style="align-items:center; gap:10px;">
+        <input type="file" id="bomFileInput" accept=".xlsx,.xls">
+        <span class="panel-note" id="bomFileStatus" style="margin:0;"></span>
+      </div>
+      <div id="bomMatchResult" style="margin-top:14px;"></div>
     </section>
 
   </div>
@@ -263,6 +311,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 (function () {
   "use strict";
@@ -314,9 +363,15 @@
     stageTableBody: document.getElementById("stageTableBody"),
     noStageMsg: document.getElementById("noStageMsg"),
     addRowBtn: document.getElementById("addRowBtn"),
+    previewBtn: document.getElementById("previewBtn"),
+    excelPreviewWrap: document.getElementById("excelPreviewWrap"),
+    previewEmptyMsg: document.getElementById("previewEmptyMsg"),
     resetBtn: document.getElementById("resetBtn"),
     exportBtn: document.getElementById("exportBtn"),
-    toast: document.getElementById("toast")
+    toast: document.getElementById("toast"),
+    bomFileInput: document.getElementById("bomFileInput"),
+    bomFileStatus: document.getElementById("bomFileStatus"),
+    bomMatchResult: document.getElementById("bomMatchResult")
   };
 
   function makeManualRow() { return { type: "", pn: "", desc: "", qty: "", usage: "", usageAuto: true, site: "", siteSameAsAbove: false }; }
@@ -552,6 +607,16 @@
     renderAll();
   });
 
+  el.previewBtn.addEventListener("click", function () {
+    if (typeof ExcelJS === "undefined") {
+      el.previewEmptyMsg.style.display = "none";
+      el.excelPreviewWrap.style.display = "none";
+      showToast("預覽元件載入失敗，請檢查網路連線後重新整理再試一次。", true);
+      return;
+    }
+    renderExcelPreview();
+  });
+
   var resetArmed = false;
   el.resetBtn.addEventListener("click", function () {
     if (!resetArmed) {
@@ -607,19 +672,9 @@
     return (count > 1 ? base + "-" + (count - 1) : base) + ".xlsx";
   }
 
-  function buildWorkbook() {
-    var wb = new ExcelJS.Workbook();
-    var ws = wb.addWorksheet("出貨階明細");
-    var fontName = "微軟正黑體";
-
-    var CENTER_WRAP = { horizontal: "center", vertical: "middle", wrapText: true };
-    var CENTER_NOWRAP = { horizontal: "center", vertical: "middle", wrapText: false };
-    var LEFT_NOWRAP = { horizontal: "left", vertical: "middle", wrapText: false };
-    var THIN = { style: "thin", color: { argb: "FFB9C3CC" } };
-    var BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
-    var HEADER_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCEEEC" } };
-    var ZEBRA_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F4F6" } };
-
+  // Shared by the real .xlsx export and the on-screen preview, so the two can never drift
+  // apart -- both just render whatever this returns, one to ExcelJS cells, one to <td>s.
+  function computeExportData() {
     var MAIN_COL_COUNT = 8;
     var MONTH_COL_COUNT = 12;
     var monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
@@ -635,6 +690,60 @@
       { header: "Usage (Per Rack)", width: 16, wrap: false }
     ];
     monthNames.forEach(function (m) { columns.push({ header: m, width: 9, wrap: false }); });
+
+    var title = (state.projectName || "出貨階規劃器") + " — 出貨階明細表";
+
+    var infoRows = [];
+    if (state.forecastPerYear || state.forecastPerMonth) {
+      infoRows.push(["Forecast (Per Year)", String(state.forecastPerYear || "")]);
+      infoRows.push(["Forecast (Per Month)", String(state.forecastPerMonth || "")]);
+    }
+
+    var yearNow = new Date().getFullYear();
+    var yearLabel = yearNow + "年(以西元表示)";
+
+    var rows = state.manualRows;
+    var perMonth = num(state.forecastPerMonth);
+    var dataRows = rows.map(function (row, i) {
+      var monthVal = num(row.usage) * perMonth;
+      var values = [
+        state.projectName || "",
+        i + 1,
+        row.type || "",
+        row.pn || "",
+        row.desc || "",
+        getEffectiveSite(rows, i),
+        num(row.qty),
+        num(row.usage)
+      ];
+      for (var m = 0; m < MONTH_COL_COUNT; m++) values.push(monthVal);
+      return values;
+    });
+
+    return {
+      title: title, infoRows: infoRows, columns: columns,
+      MAIN_COL_COUNT: MAIN_COL_COUNT, MONTH_COL_COUNT: MONTH_COL_COUNT,
+      yearLabel: yearLabel, dataRows: dataRows
+    };
+  }
+
+  function buildWorkbook() {
+    var data = computeExportData();
+    var wb = new ExcelJS.Workbook();
+    var ws = wb.addWorksheet("出貨階明細");
+    var fontName = "微軟正黑體";
+
+    var CENTER_WRAP = { horizontal: "center", vertical: "middle", wrapText: true };
+    var CENTER_NOWRAP = { horizontal: "center", vertical: "middle", wrapText: false };
+    var LEFT_NOWRAP = { horizontal: "left", vertical: "middle", wrapText: false };
+    var THIN = { style: "thin", color: { argb: "FFB9C3CC" } };
+    var BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+    var HEADER_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCEEEC" } };
+    var ZEBRA_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F4F6" } };
+
+    var MAIN_COL_COUNT = data.MAIN_COL_COUNT;
+    var MONTH_COL_COUNT = data.MONTH_COL_COUNT;
+    var columns = data.columns;
     var colCount = columns.length;
     var lastColLetter = String.fromCharCode("A".charCodeAt(0) + colCount - 1);
 
@@ -652,16 +761,14 @@
 
     ws.mergeCells("A" + nextRow + ":" + lastColLetter + nextRow);
     var titleCell = ws.getCell("A" + nextRow);
-    titleCell.value = (state.projectName || "出貨階規劃器") + " — 出貨階明細表";
+    titleCell.value = data.title;
     styleCell(titleCell, null, { bold: true, size: 15, align: LEFT_NOWRAP });
     nextRow++;
 
-    var infoRows = [];
-    if (state.forecastPerYear || state.forecastPerMonth) {
-      infoRows.push(["Forecast (Per Year)", String(state.forecastPerYear || "")]);
-      infoRows.push(["Forecast (Per Month)", String(state.forecastPerMonth || "")]);
-    }
-    infoRows.push(["匯出時間", new Date().toLocaleString("zh-TW")]);
+    // the real export additionally stamps the actual export time; the on-screen preview
+    // (computeExportData's own infoRows) deliberately leaves this out, since "now" isn't
+    // meaningful until the user actually exports.
+    var infoRows = data.infoRows.concat([["匯出時間", new Date().toLocaleString("zh-TW")]]);
 
     infoRows.forEach(function (pair) {
       var r = nextRow++;
@@ -681,7 +788,6 @@
 
     var headerRow1Index = nextRow++;
     var headerRow2Index = nextRow++;
-    var yearNow = new Date().getFullYear();
 
     for (var mainCi = 0; mainCi < MAIN_COL_COUNT; mainCi++) {
       var mainLetter = colLetter(mainCi);
@@ -695,7 +801,7 @@
     var yearEnd = colLetter(MAIN_COL_COUNT + MONTH_COL_COUNT - 1);
     ws.mergeCells(yearStart + headerRow1Index + ":" + yearEnd + headerRow1Index);
     var yearCell = ws.getCell(yearStart + headerRow1Index);
-    yearCell.value = yearNow + "年(以西元表示)";
+    yearCell.value = data.yearLabel;
     styleCell(yearCell, null, { bold: true, fill: HEADER_FILL, align: CENTER_NOWRAP });
 
     for (var mi = 0; mi < MONTH_COL_COUNT; mi++) {
@@ -705,24 +811,9 @@
       styleCell(monthCell, monthColIdx0, { bold: true, fill: HEADER_FILL });
     }
 
-    var rows = state.manualRows;
     var colMax = columns.map(function (col) { return col.wrap ? displayWidth(col.header) : 0; });
-    var perMonth = num(state.forecastPerMonth);
 
-    rows.forEach(function (row, i) {
-      var monthVal = num(row.usage) * perMonth;
-      var values = [
-        state.projectName || "",
-        i + 1,
-        row.type || "",
-        row.pn || "",
-        row.desc || "",
-        getEffectiveSite(rows, i),
-        num(row.qty),
-        num(row.usage)
-      ];
-      for (var m = 0; m < MONTH_COL_COUNT; m++) values.push(monthVal);
-
+    data.dataRows.forEach(function (values, i) {
       var r = headerRow2Index + 1 + i;
       var isEven = (i + 1) % 2 === 0;
       var maxLines = 1;
@@ -748,6 +839,91 @@
     });
 
     return wb;
+  }
+
+  // Renders an on-screen HTML mirror of computeExportData() -- same title/info rows
+  // (minus 匯出時間, which only makes sense once the file has actually been saved),
+  // same two-row header, same data rows. Only runs when the user clicks "產生 Excel
+  // 預覽"; doesn't auto-update on every keystroke.
+  function renderExcelPreview() {
+    var data = computeExportData();
+
+    if (data.dataRows.length === 0) {
+      el.excelPreviewWrap.style.display = "none";
+      el.excelPreviewWrap.innerHTML = "";
+      el.previewEmptyMsg.style.display = "block";
+      return;
+    }
+    el.previewEmptyMsg.style.display = "none";
+
+    var MAIN_COL_COUNT = data.MAIN_COL_COUNT;
+    var MONTH_COL_COUNT = data.MONTH_COL_COUNT;
+    var columns = data.columns;
+    var totalCols = columns.length;
+
+    var table = document.createElement("table");
+    table.className = "excel-preview-table";
+
+    var caption = document.createElement("caption");
+    caption.textContent = data.title;
+    table.appendChild(caption);
+
+    var infoBody = document.createElement("tbody");
+    data.infoRows.forEach(function (pair) {
+      var tr = document.createElement("tr");
+      tr.className = "preview-info-row";
+      var tdLabel = document.createElement("td");
+      tdLabel.className = "preview-info-label";
+      tdLabel.colSpan = 1;
+      tdLabel.textContent = pair[0];
+      var tdValue = document.createElement("td");
+      tdValue.colSpan = totalCols - 1;
+      tdValue.textContent = pair[1];
+      tr.appendChild(tdLabel);
+      tr.appendChild(tdValue);
+      infoBody.appendChild(tr);
+    });
+    if (data.infoRows.length > 0) table.appendChild(infoBody);
+
+    var thead = document.createElement("thead");
+    var headRow1 = document.createElement("tr");
+    for (var mainCi = 0; mainCi < MAIN_COL_COUNT; mainCi++) {
+      var th = document.createElement("th");
+      th.rowSpan = 2;
+      th.textContent = columns[mainCi].header;
+      headRow1.appendChild(th);
+    }
+    var yearTh = document.createElement("th");
+    yearTh.colSpan = MONTH_COL_COUNT;
+    yearTh.textContent = data.yearLabel;
+    headRow1.appendChild(yearTh);
+    thead.appendChild(headRow1);
+
+    var headRow2 = document.createElement("tr");
+    for (var mi = 0; mi < MONTH_COL_COUNT; mi++) {
+      var monthTh = document.createElement("th");
+      monthTh.textContent = columns[MAIN_COL_COUNT + mi].header;
+      headRow2.appendChild(monthTh);
+    }
+    thead.appendChild(headRow2);
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    data.dataRows.forEach(function (values, i) {
+      var tr = document.createElement("tr");
+      if ((i + 1) % 2 === 0) tr.className = "preview-zebra";
+      values.forEach(function (v) {
+        var td = document.createElement("td");
+        td.textContent = v === "" ? "" : String(v);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    el.excelPreviewWrap.innerHTML = "";
+    el.excelPreviewWrap.appendChild(table);
+    el.excelPreviewWrap.style.display = "block";
   }
 
   // Saving a generated file works differently depending on where this page is running:
@@ -819,6 +995,197 @@
         el.exportBtn.disabled = false;
         el.exportBtn.textContent = "匯出 Excel";
       });
+  });
+
+  // ---------- Step 2 (stage 1): BOM upload, P/N match, tree expand ----------
+  // Column identification is done by scanning header text (not fixed cell coordinates) --
+  // more resilient to the source BOM gaining/losing a row or column than hardcoded
+  // addresses, as long as the header wording itself stays the same.
+  var BOM_HEADER_TARGETS = {
+    customerPn: ["客戶料號"],
+    nameZh: ["中文描述"],
+    nameEn: ["英文描述"],
+    itemNo: ["項次"],
+    tonnage: ["機台噸位"],
+    process: ["工程數"]
+  };
+  var BOM_HEADER_SCAN_ROWS = 15;
+
+  // aoa = "array of arrays" from XLSX.utils.sheet_to_json(ws, {header:1}) -- aoa[r][c] is
+  // the raw cell value at 0-indexed row r, col c. Using SheetJS (not ExcelJS) to read
+  // uploads because ExcelJS can only read .xlsx; real BOM files from customers arrive as
+  // legacy .xls, which only SheetJS's reader supports.
+  function findBomHeaderColumns(aoa) {
+    var found = {};
+    var headerRow = null;
+    var scanRows = Math.min(BOM_HEADER_SCAN_ROWS, aoa.length);
+    for (var r = 0; r < scanRows; r++) {
+      var rowArr = aoa[r] || [];
+      for (var c = 0; c < rowArr.length; c++) {
+        var raw = rowArr[c];
+        var text = (raw == null ? "" : String(raw)).replace(/\s+/g, "");
+        if (!text) continue;
+        Object.keys(BOM_HEADER_TARGETS).forEach(function (key) {
+          if (found[key]) return; // first match wins
+          var targets = BOM_HEADER_TARGETS[key];
+          for (var t = 0; t < targets.length; t++) {
+            if (text.indexOf(targets[t]) !== -1) {
+              found[key] = { row: r, col: c };
+              if (headerRow === null || r > headerRow) headerRow = r;
+            }
+          }
+        });
+      }
+    }
+    return { columns: found, headerRow: headerRow };
+  }
+
+  function bomCellText(aoa, r, colInfo) {
+    if (!colInfo) return "";
+    var rowArr = aoa[r];
+    if (!rowArr) return "";
+    var v = rowArr[colInfo.col];
+    return v == null ? "" : String(v).trim();
+  }
+
+  function parseBomRows(aoa, cols, headerRow) {
+    var rows = [];
+    for (var r = headerRow + 1; r < aoa.length; r++) {
+      var customerPn = bomCellText(aoa, r, cols.customerPn);
+      var nameZh = bomCellText(aoa, r, cols.nameZh);
+      var nameEn = bomCellText(aoa, r, cols.nameEn);
+      var itemNo = bomCellText(aoa, r, cols.itemNo);
+      var tonnage = bomCellText(aoa, r, cols.tonnage);
+      var process = bomCellText(aoa, r, cols.process);
+      if (!customerPn && !nameZh && !nameEn && !itemNo && !tonnage && !process) continue; // fully blank row
+      rows.push({ excelRow: r + 1, itemNo: itemNo, customerPn: customerPn, name: nameZh || nameEn, tonnage: tonnage, process: process });
+    }
+    return rows;
+  }
+
+  // FBF- = 鐵件, EBF- = 塑膠件 (2026-09-03 confirmed rule, based on 客戶料號 prefix)
+  function classifyMaterial(customerPn) {
+    var pn = (customerPn || "").toUpperCase();
+    if (pn.indexOf("FBF") === 0) return "iron";
+    if (pn.indexOf("EBF") === 0) return "plastic";
+    return "unknown";
+  }
+
+  // Finds the BOM row whose 客戶料號 matches this P/N, then collects every row below it
+  // up to (but not including) the next row that has its own 項次 value -- that run of
+  // rows is the matched item's expanded sub-tree.
+  function matchBomForPn(bomRows, pn) {
+    if (!pn) return null;
+    var target = pn.trim().toUpperCase();
+    var idx = -1;
+    for (var i = 0; i < bomRows.length; i++) {
+      if ((bomRows[i].customerPn || "").toUpperCase() === target) { idx = i; break; }
+    }
+    if (idx === -1) return null;
+    var group = [bomRows[idx]];
+    for (var j = idx + 1; j < bomRows.length; j++) {
+      if (bomRows[j].itemNo) break;
+      group.push(bomRows[j]);
+    }
+    return group;
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function renderBomMatchResult(bomRows) {
+    el.bomMatchResult.innerHTML = "";
+    var rows = state.manualRows;
+    if (rows.length === 0) {
+      el.bomMatchResult.innerHTML = '<p class="bom-error">§2 明細表目前沒有任何出貨階，無法比對。</p>';
+      return;
+    }
+    rows.forEach(function (row, i) {
+      var pn = (row.pn || "").trim();
+      var group = pn ? matchBomForPn(bomRows, pn) : null;
+
+      var wrap = document.createElement("div");
+      wrap.className = "bom-group";
+
+      var head = document.createElement("div");
+      head.className = "bom-group-head";
+      var pnTag = document.createElement("span");
+      pnTag.className = "pn-tag";
+      pnTag.textContent = "Item " + (i + 1) + " — P/N: " + (pn || "(未填)");
+      head.appendChild(pnTag);
+      var badge = document.createElement("span");
+      badge.className = "badge " + (group ? "matched" : "unmatched");
+      badge.textContent = group ? ("比對到，展開 " + group.length + " 筆") : "未比對到";
+      head.appendChild(badge);
+      wrap.appendChild(head);
+
+      if (group) {
+        var table = document.createElement("table");
+        var thead = document.createElement("thead");
+        thead.innerHTML = "<tr><th>項次</th><th>品名</th><th>客戶料號</th><th>材質</th><th>機台噸位</th><th>工程數</th></tr>";
+        table.appendChild(thead);
+        var tbody = document.createElement("tbody");
+        group.forEach(function (r) {
+          var material = classifyMaterial(r.customerPn);
+          var materialLabel = material === "iron" ? "鐵件" : material === "plastic" ? "塑膠件" : "-";
+          var tr = document.createElement("tr");
+          tr.innerHTML =
+            "<td>" + escapeHtml(r.itemNo) + "</td>" +
+            "<td>" + escapeHtml(r.name) + "</td>" +
+            "<td>" + escapeHtml(r.customerPn) + "</td>" +
+            "<td class=\"metal-tag " + material + "\">" + materialLabel + "</td>" +
+            "<td>" + escapeHtml(r.tonnage) + "</td>" +
+            "<td>" + escapeHtml(r.process) + "</td>";
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+      }
+
+      el.bomMatchResult.appendChild(wrap);
+    });
+  }
+
+  el.bomFileInput.addEventListener("change", function () {
+    var file = el.bomFileInput.files && el.bomFileInput.files[0];
+    if (!file) return;
+    if (typeof XLSX === "undefined") {
+      el.bomFileStatus.textContent = "Excel 解析元件載入失敗，請檢查網路連線後重新整理再試一次。";
+      return;
+    }
+    el.bomFileStatus.textContent = "讀取中…";
+    el.bomMatchResult.innerHTML = "";
+
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var wb = XLSX.read(reader.result, { type: "array" });
+        var sheetName = wb.SheetNames[0];
+        var ws = sheetName && wb.Sheets[sheetName];
+        if (!ws) {
+          el.bomFileStatus.textContent = "找不到工作表。";
+          return;
+        }
+        var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
+        var headerInfo = findBomHeaderColumns(aoa);
+        if (!headerInfo.columns.customerPn) {
+          el.bomFileStatus.textContent = "找不到「客戶料號」欄位標題，請確認 BOM 格式是否正確。";
+          return;
+        }
+        var bomRows = parseBomRows(aoa, headerInfo.columns, headerInfo.headerRow);
+        el.bomFileStatus.textContent = "已讀取「" + file.name + "」（工作表：" + sheetName + "），共 " + bomRows.length + " 筆料號列。";
+        renderBomMatchResult(bomRows);
+      } catch (err) {
+        el.bomFileStatus.textContent = "解析失敗：" + (err && err.message ? err.message : "未知錯誤");
+      }
+    };
+    reader.onerror = function () {
+      el.bomFileStatus.textContent = "檔案讀取失敗。";
+    };
+    reader.readAsArrayBuffer(file);
   });
 
   renderAll();
