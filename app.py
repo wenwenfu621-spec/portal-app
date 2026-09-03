@@ -123,6 +123,11 @@ ADMIN_EMPLOYEE_IDS = {"ETW00375"}
 # 連過去也會被擋）。測試完成、要開放給全體同仁時，把這個白名單判斷拿掉即可。
 TRIP_DAILY_LOG_TESTERS = {"ETW00375"}
 
+# 「出貨階規劃」同樣是分階段上線中的新功能，目前只給測試名單裡的員工編號看得到
+# 選單入口；真正擋非測試帳號的關卡在 pages/5_出貨階規劃.py 頁面自己的伺服器端
+# 檢查。測試完成、要開放給全體同仁時，把這個白名單判斷拿掉即可。
+CAPACITY_SCHEDULER_TESTERS = {"ETW00375"}
+
 
 def _inject_background_css(image_path: Path) -> None:
     image_b64 = base64.b64encode(image_path.read_bytes()).decode("utf-8")
@@ -275,6 +280,7 @@ input[aria-label="帳號（員工編號）"] {
 .st-key-menu_card div[data-testid="stPageLink"] a[href*="出差申報"] { border-left-color: #818cf8; }
 .st-key-menu_card div[data-testid="stPageLink"] a[href*="管理員維護區"] { border-left-color: #fb923c; }
 .st-key-menu_card div[data-testid="stPageLink"] a[href*="出差工作日誌"] { border-left-color: #a4573a; }
+.st-key-menu_card div[data-testid="stPageLink"] a[href*="出貨階規劃"] { border-left-color: #14b8a6; }
 </style>
 """
 
@@ -355,6 +361,8 @@ def render_menu() -> None:
         st.page_link("pages/2_出差申報.py", label="🧳 出差申報", width="stretch")
         if st.session_state.get("employee_id") in TRIP_DAILY_LOG_TESTERS:
             st.page_link("pages/4_出差工作日誌.py", label="📝 出差工作日誌", width="stretch")
+        if st.session_state.get("employee_id") in CAPACITY_SCHEDULER_TESTERS:
+            st.page_link("pages/5_出貨階規劃.py", label="🗄️ 出貨階規劃", width="stretch")
         if st.session_state.get("employee_id") in ADMIN_EMPLOYEE_IDS:
             st.page_link("pages/3_管理員維護區.py", label="🛠️ 管理員維護區", width="stretch")
 

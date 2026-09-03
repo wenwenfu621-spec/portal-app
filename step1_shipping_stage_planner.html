@@ -1,0 +1,770 @@
+<title>出貨階規劃器</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg: #F4F6F8;
+    --surface: #FFFFFF;
+    --surface-2: #EAEEF2;
+    --surface-3: #DEE4E9;
+    --border: #D7DEE4;
+    --border-strong: #B9C3CC;
+    --text: #1A222C;
+    --text-muted: #5C6773;
+    --text-faint: #8A94A0;
+    --accent: #0E7E77;
+    --accent-strong: #0A5F5A;
+    --accent-soft: #E1F2F0;
+    --warn: #A85F0E;
+    --warn-strong: #8A4C09;
+    --warn-soft: #FBEDDB;
+    --danger: #B23A3A;
+    --danger-soft: #FAE6E6;
+    --focus: #0E7E77;
+    --shadow: 0 1px 2px rgba(20,30,40,0.06), 0 4px 14px rgba(20,30,40,0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0F1419;
+      --surface: #161D24;
+      --surface-2: #1D2630;
+      --surface-3: #26313D;
+      --border: #2B3743;
+      --border-strong: #3B4B59;
+      --text: #E7EDF1;
+      --text-muted: #9AA8B4;
+      --text-faint: #6C7A87;
+      --accent: #3FC9BE;
+      --accent-strong: #6EDCD3;
+      --accent-soft: #14312F;
+      --warn: #E3A455;
+      --warn-strong: #F0BD7C;
+      --warn-soft: #3A2C15;
+      --danger: #E38080;
+      --danger-soft: #3A1E1E;
+      --focus: #3FC9BE;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0F1419;
+    --surface: #161D24;
+    --surface-2: #1D2630;
+    --surface-3: #26313D;
+    --border: #2B3743;
+    --border-strong: #3B4B59;
+    --text: #E7EDF1;
+    --text-muted: #9AA8B4;
+    --text-faint: #6C7A87;
+    --accent: #3FC9BE;
+    --accent-strong: #6EDCD3;
+    --accent-soft: #14312F;
+    --warn: #E3A455;
+    --warn-strong: #F0BD7C;
+    --warn-soft: #3A2C15;
+    --danger: #E38080;
+    --danger-soft: #3A1E1E;
+    --focus: #3FC9BE;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', 'PingFang TC', 'Microsoft JhengHei', 'Noto Sans TC', system-ui, sans-serif;
+    font-size: 14.5px;
+    line-height: 1.55;
+  }
+  .mono { font-family: 'IBM Plex Mono', 'Cascadia Mono', Consolas, monospace; font-variant-numeric: tabular-nums; }
+  h1, h2, h3 { text-wrap: balance; font-weight: 600; margin: 0; }
+  input[type="text"], input[type="number"], select {
+    font: inherit;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 7px 10px;
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+  button { font: inherit; cursor: pointer; }
+
+  .app { max-width: 980px; margin: 0 auto; padding: 28px 24px 80px; }
+
+  .topbar {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 16px; margin-bottom: 22px; flex-wrap: wrap;
+    border-bottom: 1px solid var(--border); padding-bottom: 18px;
+  }
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; display: block; margin-bottom: 6px;
+  }
+  .topbar h1 { font-size: 22px; letter-spacing: -0.01em; }
+  .topbar-sub { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+  .topbar-actions { display: flex; gap: 8px; align-items: center; }
+  .btn-reset {
+    background: transparent; border: 1px solid var(--border-strong); color: var(--text-muted);
+    border-radius: 6px; padding: 7px 12px; font-size: 12.5px;
+  }
+  .btn-reset:hover { border-color: var(--danger); color: var(--danger); }
+  .btn-reset.arm { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
+  .btn-export {
+    background: var(--accent); border: 1px solid var(--accent); color: var(--surface);
+    border-radius: 6px; padding: 7px 14px; font-size: 12.5px; font-weight: 600;
+  }
+  .btn-export:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+  .btn-export:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(12px);
+    background: var(--text); color: var(--bg); border-radius: 8px; padding: 11px 18px;
+    font-size: 13px; box-shadow: var(--shadow); opacity: 0; pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease; z-index: 40; max-width: 90vw; text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.error { background: var(--danger); color: #fff; }
+
+  .col-form { display: flex; flex-direction: column; gap: 16px; }
+
+  .panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; box-shadow: var(--shadow);
+  }
+  .panel-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+  .panel-head .step { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-faint); font-weight: 600; }
+  .panel-head h2 { font-size: 15.5px; }
+  .panel-note { color: var(--text-muted); font-size: 12.5px; margin-top: 2px; }
+
+  .field-row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .field { display: flex; flex-direction: column; gap: 5px; flex: 1 1 160px; }
+  .field label { font-size: 12.5px; color: var(--text-muted); font-weight: 500; text-align: center; }
+  .field input[type="number"] { width: 100%; text-align: center; }
+  .field input[type="text"] { width: 100%; text-align: center; }
+
+  .forecast-box { flex: 1 1 260px; border: 1px solid var(--border-strong); border-radius: 8px; padding: 10px 14px 12px; }
+  .forecast-title { text-align: center; font-size: 13.5px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+  .forecast-fields { display: flex; gap: 14px; }
+  .forecast-fields .field { flex: 1 1 0; }
+
+  .table-empty-msg { color: var(--text-faint); font-size: 13px; padding: 10px 2px; }
+
+  .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+  table.pn-table { width: 100%; border-collapse: collapse; min-width: 760px; table-layout: auto; }
+  /* column order: 1 Item, 2 類型, 3 P/N, 4 Description, 5 Q'Ty, 6 Usage, 7 生產地, 8 delete.
+     類型/Description/Q'Ty/Usage/生產地 each keep a protected minimum; P/N has none, so
+     it's the column that gives way first when the others need more room. */
+  table.pn-table th:nth-child(2), table.pn-table td:nth-child(2) { min-width: 130px; }
+  table.pn-table th:nth-child(3), table.pn-table td:nth-child(3) { min-width: 100px; }
+  table.pn-table th:nth-child(4), table.pn-table td:nth-child(4) { min-width: 170px; }
+  table.pn-table th:nth-child(5), table.pn-table td:nth-child(5) { min-width: 64px; }
+  table.pn-table th:nth-child(6), table.pn-table td:nth-child(6) { min-width: 100px; }
+  table.pn-table th:nth-child(7), table.pn-table td:nth-child(7) { min-width: 124px; }
+  table.pn-table th {
+    text-align: center; font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--text-faint); font-weight: 600; background: var(--surface-2);
+    padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  table.pn-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  table.pn-table tr:last-child td { border-bottom: none; }
+  table.pn-table td input[type="text"], table.pn-table td input[type="number"], table.pn-table td select {
+    width: 100%; padding: 6px 8px; font-size: 13px; text-align: center;
+  }
+  table.pn-table td select { text-align-last: center; }
+  table.pn-table td.item-cell { font-family: 'IBM Plex Mono', monospace; color: var(--text-muted); font-size: 13px; width: 46px; text-align: center; }
+
+  .site-wrap { display: flex; align-items: center; gap: 7px; }
+  .site-wrap .site-same-toggle { flex: none; width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  table.pn-table td.site-cell .site-wrap input[type="text"] { flex: 1; width: auto; min-width: 0; }
+  table.pn-table td.site-cell input.auto-filled { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); font-weight: 600; }
+  table.pn-table td.site-cell input:disabled { cursor: not-allowed; opacity: 0.9; }
+  table.pn-table td.del-cell { width: 34px; text-align: center; }
+  .row-del { background: transparent; border: none; color: var(--text-faint); font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 5px; }
+  .row-del:hover { color: var(--danger); background: var(--danger-soft); }
+  .add-row-btn {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+    background: transparent; border: 1px dashed var(--border-strong); color: var(--text-muted);
+    border-radius: 7px; padding: 6px 12px; font-size: 12.5px;
+  }
+  .add-row-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+</style>
+
+<div class="app">
+  <header class="topbar">
+    <div>
+      <span class="eyebrow">RACK PLANNING · STEP 1</span>
+      <h1>出貨階規劃器</h1>
+      <div class="topbar-sub">出貨階料號明細，作為產能計算的基礎輸入</div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn-export" id="exportBtn" type="button">匯出 Excel</button>
+      <button class="btn-reset" id="resetBtn" type="button">清空表單</button>
+    </div>
+  </header>
+
+  <div class="col-form">
+
+    <section class="panel">
+      <div class="panel-head"><span class="step">§1</span><h2>基本資料</h2></div>
+      <div class="field-row">
+        <div class="field">
+          <label for="projectName">專案機種名</label>
+          <input type="text" id="projectName" placeholder="例如：R-9200 系列">
+        </div>
+      </div>
+      <div class="field-row" style="margin-top: 14px;">
+        <div class="forecast-box">
+          <div class="forecast-title">Forecast</div>
+          <div class="forecast-fields">
+            <div class="field">
+              <label for="forecastPerYear">Per Year</label>
+              <input type="number" id="forecastPerYear" min="0">
+            </div>
+            <div class="field">
+              <label for="forecastPerMonth">Per Month</label>
+              <input type="number" id="forecastPerMonth" min="0">
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><span class="step">§2</span><h2>出貨階明細表</h2></div>
+      <p class="panel-note" style="margin-top:-8px; margin-bottom: 12px;">
+        每按一次「+ 新增料號」會新增一列<strong>獨立的出貨階</strong>，可個別刪除。
+        生產地欄位（第一列以外）左側有勾選框：打勾＝與上一列生產地相同；取消勾選即可自行輸入。
+      </p>
+      <div class="table-scroll">
+        <table class="pn-table">
+          <thead>
+            <tr><th>Item</th><th>類型</th><th>P/N</th><th>Description</th><th>Q'Ty</th><th>Usage (Per Rack)</th><th>生產地</th><th></th></tr>
+          </thead>
+          <tbody id="stageTableBody"></tbody>
+        </table>
+      </div>
+      <p class="table-empty-msg" id="noStageMsg" style="display:none;">尚未有任何出貨階，請按下方「+ 新增料號」開始新增。</p>
+      <button class="add-row-btn" id="addRowBtn" type="button">+ 新增料號</button>
+    </section>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var STORAGE_KEY = "shipStagePlanner.v7";
+  var TYPE_OPTIONS = ["Chassis", "Tray", "Blade", "Fan Carrier", "Dummy Tray", "Dummy Blank", "Other"];
+
+  var defaultState = {
+    projectName: "",
+    forecastPerYear: "",
+    forecastPerMonth: "",
+    manualRows: []
+  };
+
+  var state = loadState();
+
+  function loadState() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return JSON.parse(JSON.stringify(defaultState));
+      var parsed = JSON.parse(raw);
+      return Object.assign(JSON.parse(JSON.stringify(defaultState)), parsed);
+    } catch (e) {
+      return JSON.parse(JSON.stringify(defaultState));
+    }
+  }
+
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) { /* storage unavailable, ignore */ }
+  }
+
+  function num(v) {
+    var n = parseFloat(v);
+    return isFinite(n) ? n : 0;
+  }
+
+  function fmt(n) {
+    if (!isFinite(n)) return "–";
+    return (Math.round(n * 100) / 100).toString();
+  }
+
+  // ---------- element refs ----------
+  var el = {
+    projectName: document.getElementById("projectName"),
+    forecastPerYear: document.getElementById("forecastPerYear"),
+    forecastPerMonth: document.getElementById("forecastPerMonth"),
+    stageTableBody: document.getElementById("stageTableBody"),
+    noStageMsg: document.getElementById("noStageMsg"),
+    addRowBtn: document.getElementById("addRowBtn"),
+    resetBtn: document.getElementById("resetBtn"),
+    exportBtn: document.getElementById("exportBtn"),
+    toast: document.getElementById("toast")
+  };
+
+  function makeManualRow() { return { type: "", pn: "", desc: "", qty: "", usage: "", site: "", siteSameAsAbove: false }; }
+
+  // resolves a row's displayed 生產地, following the "同上" chain upward to the
+  // nearest row that has its own value typed in
+  function getEffectiveSite(rows, i) {
+    var guard = 0;
+    while (i >= 0 && rows[i].siteSameAsAbove && guard < rows.length) {
+      i -= 1;
+      guard += 1;
+    }
+    if (i < 0) return "";
+    return rows[i].site || "";
+  }
+
+  // ---------- render ----------
+  function renderBasicInfo() {
+    el.projectName.value = state.projectName;
+    el.forecastPerYear.value = state.forecastPerYear || "";
+    el.forecastPerMonth.value = state.forecastPerMonth || "";
+  }
+
+  function renderStageTable() {
+    var rows = state.manualRows;
+    el.stageTableBody.innerHTML = "";
+    el.noStageMsg.style.display = rows.length === 0 ? "block" : "none";
+
+    var siteInputRefs = [];
+    function refreshSiteChain() {
+      siteInputRefs.forEach(function (ref) {
+        if (rows[ref.i].siteSameAsAbove) {
+          ref.input.value = getEffectiveSite(rows, ref.i);
+        }
+      });
+    }
+
+    rows.forEach(function (row, i) {
+      var tr = document.createElement("tr");
+
+      var tdItem = document.createElement("td");
+      tdItem.className = "item-cell";
+      tdItem.textContent = i + 1;
+      tr.appendChild(tdItem);
+
+      var tdType = document.createElement("td");
+      var typeSelect = document.createElement("select");
+      var blankOpt = document.createElement("option");
+      blankOpt.value = ""; blankOpt.textContent = "請選擇";
+      typeSelect.appendChild(blankOpt);
+      TYPE_OPTIONS.forEach(function (opt) {
+        var o = document.createElement("option");
+        o.value = opt; o.textContent = opt;
+        typeSelect.appendChild(o);
+      });
+      typeSelect.value = row.type || "";
+      typeSelect.addEventListener("change", function () {
+        row.type = typeSelect.value;
+        saveState();
+      });
+      tdType.appendChild(typeSelect);
+      tr.appendChild(tdType);
+
+      [["pn", "text", "PN-000"], ["desc", "text", "說明"]].forEach(function (f) {
+        var td = document.createElement("td");
+        var input = document.createElement("input");
+        input.type = f[1];
+        input.placeholder = f[2];
+        input.value = row[f[0]];
+        input.addEventListener("input", function () {
+          row[f[0]] = input.value;
+          saveState();
+        });
+        td.appendChild(input);
+        tr.appendChild(td);
+      });
+
+      var tdQty = document.createElement("td");
+      var qtyInput = document.createElement("input");
+      qtyInput.type = "number"; qtyInput.min = "0"; qtyInput.placeholder = "0";
+      qtyInput.value = row.qty;
+      qtyInput.addEventListener("input", function () { row.qty = qtyInput.value; saveState(); });
+      tdQty.appendChild(qtyInput);
+      tr.appendChild(tdQty);
+
+      var tdUsage = document.createElement("td");
+      var usageInput = document.createElement("input");
+      usageInput.type = "number"; usageInput.min = "0"; usageInput.placeholder = "0";
+      usageInput.value = row.usage;
+      usageInput.addEventListener("input", function () { row.usage = usageInput.value; saveState(); });
+      tdUsage.appendChild(usageInput);
+      tr.appendChild(tdUsage);
+
+      var tdSite = document.createElement("td");
+      tdSite.className = "site-cell";
+      var siteWrap = document.createElement("div");
+      siteWrap.className = "site-wrap";
+
+      if (i > 0) {
+        var sameToggle = document.createElement("input");
+        sameToggle.type = "checkbox";
+        sameToggle.className = "site-same-toggle";
+        sameToggle.title = "打勾＝與上一列生產地相同；取消勾選＝自行輸入";
+        sameToggle.checked = !!row.siteSameAsAbove;
+        sameToggle.addEventListener("change", function () {
+          row.siteSameAsAbove = sameToggle.checked;
+          saveState();
+          renderAll();
+        });
+        siteWrap.appendChild(sameToggle);
+      }
+
+      var isSameSite = i > 0 && !!row.siteSameAsAbove;
+      var siteInput = document.createElement("input");
+      siteInput.type = "text";
+      siteInput.placeholder = "生產地";
+      siteInput.value = isSameSite ? getEffectiveSite(rows, i) : (row.site || "");
+      siteInput.disabled = isSameSite;
+      siteInput.classList.toggle("auto-filled", isSameSite);
+      siteInput.title = isSameSite ? "與上一列生產地相同，取消左側勾選可自行輸入" : "手動輸入";
+      siteInput.addEventListener("input", function () {
+        row.site = siteInput.value;
+        saveState();
+        refreshSiteChain();
+      });
+      siteWrap.appendChild(siteInput);
+      siteInputRefs.push({ input: siteInput, i: i });
+
+      tdSite.appendChild(siteWrap);
+      tr.appendChild(tdSite);
+
+      var tdDel = document.createElement("td");
+      tdDel.className = "del-cell";
+      var delBtn = document.createElement("button");
+      delBtn.className = "row-del"; delBtn.type = "button"; delBtn.textContent = "✕";
+      delBtn.title = "刪除此出貨階";
+      delBtn.addEventListener("click", function () {
+        state.manualRows.splice(i, 1);
+        saveState();
+        renderAll();
+      });
+      tdDel.appendChild(delBtn);
+      tr.appendChild(tdDel);
+
+      el.stageTableBody.appendChild(tr);
+    });
+  }
+
+  function renderAll() {
+    renderBasicInfo();
+    renderStageTable();
+  }
+
+  // ---------- events ----------
+  el.projectName.addEventListener("input", function () { state.projectName = el.projectName.value; saveState(); });
+  el.forecastPerYear.addEventListener("input", function () {
+    state.forecastPerYear = el.forecastPerYear.value;
+    var y = num(state.forecastPerYear);
+    if (y > 0) {
+      state.forecastPerMonth = fmt(y / 12);
+      el.forecastPerMonth.value = state.forecastPerMonth;
+    } else {
+      state.forecastPerMonth = "";
+      el.forecastPerMonth.value = "";
+    }
+    saveState();
+  });
+  el.forecastPerMonth.addEventListener("input", function () {
+    state.forecastPerMonth = el.forecastPerMonth.value;
+    var m = num(state.forecastPerMonth);
+    if (m > 0) {
+      state.forecastPerYear = fmt(m * 12);
+      el.forecastPerYear.value = state.forecastPerYear;
+    } else {
+      state.forecastPerYear = "";
+      el.forecastPerYear.value = "";
+    }
+    saveState();
+  });
+
+  el.addRowBtn.addEventListener("click", function () {
+    state.manualRows.push(makeManualRow());
+    saveState();
+    renderAll();
+  });
+
+  var resetArmed = false;
+  el.resetBtn.addEventListener("click", function () {
+    if (!resetArmed) {
+      resetArmed = true;
+      el.resetBtn.textContent = "再按一次確認清空";
+      el.resetBtn.classList.add("arm");
+      setTimeout(function () {
+        resetArmed = false;
+        el.resetBtn.textContent = "清空表單";
+        el.resetBtn.classList.remove("arm");
+      }, 3000);
+      return;
+    }
+    state = JSON.parse(JSON.stringify(defaultState));
+    saveState();
+    resetArmed = false;
+    el.resetBtn.textContent = "清空表單";
+    el.resetBtn.classList.remove("arm");
+    renderAll();
+  });
+
+  // ---------- Excel export ----------
+  var toastTimer = null;
+  function showToast(msg, isError) {
+    el.toast.textContent = msg;
+    el.toast.classList.toggle("error", !!isError);
+    el.toast.classList.add("show");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.toast.classList.remove("show"); }, 4000);
+  }
+
+  function displayWidth(str) {
+    str = String(str == null ? "" : str);
+    var w = 0;
+    for (var i = 0; i < str.length; i++) w += str.charCodeAt(i) > 255 ? 2 : 1;
+    return w;
+  }
+
+  function pad2(n) { return n < 10 ? "0" + n : String(n); }
+
+  function buildExportFilename() {
+    var now = new Date();
+    var dateStr = now.getFullYear() + "-" + pad2(now.getMonth() + 1) + "-" + pad2(now.getDate());
+    var nameSafe = (state.projectName || "未命名專案").replace(/[\\\/:*?"<>|]/g, "_").trim() || "未命名專案";
+    var base = "出貨階規劃_" + nameSafe + "_" + dateStr;
+    var key = "shipStagePlanner.exportCount." + dateStr;
+    var count = 0;
+    try {
+      count = parseInt(localStorage.getItem(key) || "0", 10) || 0;
+      count += 1;
+      localStorage.setItem(key, String(count));
+    } catch (e) { count = 1; }
+    return (count > 1 ? base + "-" + (count - 1) : base) + ".xlsx";
+  }
+
+  function buildWorkbook() {
+    var wb = new ExcelJS.Workbook();
+    var ws = wb.addWorksheet("出貨階明細");
+    var fontName = "微軟正黑體";
+
+    var CENTER_WRAP = { horizontal: "center", vertical: "middle", wrapText: true };
+    var CENTER_NOWRAP = { horizontal: "center", vertical: "middle", wrapText: false };
+    var LEFT_NOWRAP = { horizontal: "left", vertical: "middle", wrapText: false };
+    var THIN = { style: "thin", color: { argb: "FFB9C3CC" } };
+    var BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+    var HEADER_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCEEEC" } };
+    var ZEBRA_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F4F6" } };
+
+    var MAIN_COL_COUNT = 8;
+    var MONTH_COL_COUNT = 12;
+    var monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+
+    var columns = [
+      { header: "Project Name", width: 16, wrap: true, capWidth: 26 },
+      { header: "Item", width: 8, wrap: false },
+      { header: "類型", width: 13, wrap: false },
+      { header: "P/N", width: 14, wrap: false },
+      { header: "Description", width: 20, wrap: true, capWidth: 32 },
+      { header: "生產地", width: 12, wrap: true, capWidth: 20 },
+      { header: "Q'Ty", width: 9, wrap: false },
+      { header: "Usage (Per Rack)", width: 16, wrap: false }
+    ];
+    monthNames.forEach(function (m) { columns.push({ header: m, width: 9, wrap: false }); });
+    var colCount = columns.length;
+    var lastColLetter = String.fromCharCode("A".charCodeAt(0) + colCount - 1);
+
+    columns.forEach(function (col, i) { ws.getColumn(i + 1).width = col.width; });
+
+    function styleCell(cell, colIndex, opts) {
+      opts = opts || {};
+      cell.font = { name: fontName, size: opts.size || 11, bold: !!opts.bold };
+      cell.alignment = opts.align || (colIndex != null && columns[colIndex] && !columns[colIndex].wrap ? CENTER_NOWRAP : CENTER_WRAP);
+      cell.border = BORDER;
+      if (opts.fill) cell.fill = opts.fill;
+    }
+
+    var nextRow = 1;
+
+    ws.mergeCells("A" + nextRow + ":" + lastColLetter + nextRow);
+    var titleCell = ws.getCell("A" + nextRow);
+    titleCell.value = (state.projectName || "出貨階規劃器") + " — 出貨階明細表";
+    styleCell(titleCell, null, { bold: true, size: 15, align: LEFT_NOWRAP });
+    nextRow++;
+
+    var infoRows = [];
+    if (state.forecastPerYear || state.forecastPerMonth) {
+      infoRows.push(["Forecast (Per Year)", String(state.forecastPerYear || "")]);
+      infoRows.push(["Forecast (Per Month)", String(state.forecastPerMonth || "")]);
+    }
+    infoRows.push(["匯出時間", new Date().toLocaleString("zh-TW")]);
+
+    infoRows.forEach(function (pair) {
+      var r = nextRow++;
+      ws.mergeCells("B" + r + ":" + lastColLetter + r);
+      var labelCell = ws.getCell("A" + r);
+      labelCell.value = pair[0];
+      styleCell(labelCell, null, { bold: true, align: LEFT_NOWRAP });
+      var valueCell = ws.getCell("B" + r);
+      valueCell.value = pair[1];
+      styleCell(valueCell, null, { align: LEFT_NOWRAP });
+    });
+    nextRow++;
+
+    // two-row header: Project Name..Usage span both rows; 年分 spans the 12 month columns
+    // on row 1, with the individual month labels on row 2 underneath it.
+    function colLetter(idx0) { return String.fromCharCode("A".charCodeAt(0) + idx0); }
+
+    var headerRow1Index = nextRow++;
+    var headerRow2Index = nextRow++;
+    var yearNow = new Date().getFullYear();
+
+    for (var mainCi = 0; mainCi < MAIN_COL_COUNT; mainCi++) {
+      var mainLetter = colLetter(mainCi);
+      ws.mergeCells(mainLetter + headerRow1Index + ":" + mainLetter + headerRow2Index);
+      var mainCell = ws.getCell(mainLetter + headerRow1Index);
+      mainCell.value = columns[mainCi].header;
+      styleCell(mainCell, mainCi, { bold: true, fill: HEADER_FILL });
+    }
+
+    var yearStart = colLetter(MAIN_COL_COUNT);
+    var yearEnd = colLetter(MAIN_COL_COUNT + MONTH_COL_COUNT - 1);
+    ws.mergeCells(yearStart + headerRow1Index + ":" + yearEnd + headerRow1Index);
+    var yearCell = ws.getCell(yearStart + headerRow1Index);
+    yearCell.value = yearNow + "年(以西元表示)";
+    styleCell(yearCell, null, { bold: true, fill: HEADER_FILL, align: CENTER_NOWRAP });
+
+    for (var mi = 0; mi < MONTH_COL_COUNT; mi++) {
+      var monthColIdx0 = MAIN_COL_COUNT + mi;
+      var monthCell = ws.getCell(headerRow2Index, monthColIdx0 + 1);
+      monthCell.value = columns[monthColIdx0].header;
+      styleCell(monthCell, monthColIdx0, { bold: true, fill: HEADER_FILL });
+    }
+
+    var rows = state.manualRows;
+    var colMax = columns.map(function (col) { return col.wrap ? displayWidth(col.header) : 0; });
+    var perMonth = num(state.forecastPerMonth);
+
+    rows.forEach(function (row, i) {
+      var monthVal = num(row.usage) * perMonth;
+      var values = [
+        state.projectName || "",
+        i + 1,
+        row.type || "",
+        row.pn || "",
+        row.desc || "",
+        getEffectiveSite(rows, i),
+        num(row.qty),
+        num(row.usage)
+      ];
+      for (var m = 0; m < MONTH_COL_COUNT; m++) values.push(monthVal);
+
+      var r = headerRow2Index + 1 + i;
+      var isEven = (i + 1) % 2 === 0;
+      var maxLines = 1;
+      values.forEach(function (v, ci) {
+        var cell = ws.getCell(r, ci + 1);
+        cell.value = v;
+        styleCell(cell, ci, isEven ? { fill: ZEBRA_FILL } : {});
+        var col = columns[ci];
+        if (col.wrap) {
+          var w = displayWidth(v);
+          colMax[ci] = Math.max(colMax[ci], w);
+          var lines = Math.max(1, Math.ceil(w / (col.capWidth || col.width)));
+          if (lines > maxLines) maxLines = lines;
+        }
+      });
+      ws.getRow(r).height = Math.max(18, maxLines * 16 + 6);
+    });
+
+    columns.forEach(function (col, i) {
+      if (!col.wrap) return;
+      var needed = Math.min(Math.max(colMax[i] + 2, col.width), col.capWidth || col.width);
+      ws.getColumn(i + 1).width = needed;
+    });
+
+    return wb;
+  }
+
+  // Saving a generated file works differently depending on where this page is running:
+  // - Inside the Claude Artifact viewer, direct browser downloads are sandboxed/blocked,
+  //   so we go through the platform's own `downloads` capability (window.claude).
+  // - Everywhere else (embedded in the Streamlit portal via components.html, opened as a
+  //   plain local file, etc.) that capability doesn't exist, but it's a normal browser
+  //   context, so the classic blob + temporary <a download> click works fine.
+  function saveGeneratedFile(filename, arrayBuffer) {
+    if (window.claude && typeof window.claude.use === "function") {
+      return Promise.resolve()
+        .then(function () { return window.claude.use("downloads"); })
+        .then(function (downloads) {
+          if (!downloads) {
+            return browserDownload(filename, arrayBuffer, true);
+          }
+          return downloads.save({ filename: filename, data: arrayBuffer })
+            .then(function (result) {
+              return { via: "claude", status: result && result.status };
+            });
+        });
+    }
+    return browserDownload(filename, arrayBuffer, false);
+  }
+
+  function browserDownload(filename, arrayBuffer, viaFallback) {
+    var blob = new Blob([arrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    return Promise.resolve({ via: viaFallback ? "browser-fallback" : "browser", status: "saved" });
+  }
+
+  el.exportBtn.addEventListener("click", function () {
+    if (typeof ExcelJS === "undefined") {
+      showToast("Excel 匯出元件載入失敗，請檢查網路連線後重新整理再試一次。", true);
+      return;
+    }
+
+    el.exportBtn.disabled = true;
+    el.exportBtn.textContent = "匯出中…";
+
+    var wb = buildWorkbook();
+    var filename = buildExportFilename();
+
+    wb.xlsx.writeBuffer()
+      .then(function (buffer) { return saveGeneratedFile(filename, buffer); })
+      .then(function (result) {
+        showToast((result && result.status === "delivered" ? "已送出：" : "已匯出：") + filename);
+      })
+      .catch(function (err) {
+        var code = err && err.code;
+        if (code === "declined") {
+          /* user said no, no message needed */
+        } else if (code === "too_large") {
+          showToast("檔案超過 16MB 上限，匯出失敗。", true);
+        } else if (code === "rate_limited") {
+          showToast("已有一個下載請求進行中，請稍候再試。", true);
+        } else {
+          showToast("匯出失敗：" + (err && err.message ? err.message : "未知錯誤"), true);
+        }
+      })
+      .finally(function () {
+        el.exportBtn.disabled = false;
+        el.exportBtn.textContent = "匯出 Excel";
+      });
+  });
+
+  renderAll();
+})();
+</script>
