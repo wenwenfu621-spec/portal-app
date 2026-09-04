@@ -167,8 +167,28 @@
   .bom-group td.metal-tag.plastic { color: var(--accent-strong); }
   .bom-error { color: var(--danger); font-size: 13px; padding: 8px 2px; }
 
+  .bom-file-list { display: flex; flex-direction: column; gap: 6px; }
+  .bom-file-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; background: var(--surface-2); }
+  .bom-file-row .bom-file-name { flex: 1; overflow-wrap: anywhere; }
+  .bom-file-summary { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .bom-dup-note { color: var(--warn-strong); font-size: 12px; padding: 4px 12px 8px; }
+
   .stamping-ref-block { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 4px; }
   .stamping-ref-head { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .stamping-ref-toggle {
+    display: flex; align-items: center; gap: 6px; width: 100%;
+    background: none; border: none; padding: 0; margin-bottom: 0;
+    font-size: 13px; font-weight: 600; color: var(--text); text-align: left;
+  }
+  .stamping-ref-toggle .toggle-arrow { display: inline-block; font-size: 11px; color: var(--text-faint); transition: transform 0.15s ease; }
+  .stamping-ref-toggle[aria-expanded="true"] .toggle-arrow { transform: rotate(90deg); }
+  .stamping-ref-toggle[aria-expanded="true"] { margin-bottom: 8px; }
+  .stamping-ref-body { margin-top: 8px; }
+  .bom-group-toggle {
+    margin-left: auto; background: none; border: 1px solid var(--border-strong); color: var(--text-muted);
+    border-radius: 5px; padding: 3px 9px; font-size: 11.5px; cursor: pointer;
+  }
+  .bom-group-toggle:hover { border-color: var(--accent); color: var(--accent-strong); }
   table.ref-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 280px; }
   table.ref-table th { text-align: left; padding: 6px 10px; color: var(--text-faint); font-weight: 600; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--border); white-space: nowrap; }
   table.ref-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -236,6 +256,8 @@
   table.excel-preview-table thead th { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
   table.excel-preview-table .preview-info-row td { text-align: left; }
   table.excel-preview-table .preview-info-row td.preview-info-label { font-weight: 600; white-space: nowrap; width: 1%; }
+  table.excel-preview-table .preview-forecast-row td { text-align: left; }
+  table.excel-preview-table .preview-forecast-row td.preview-info-label { font-weight: 600; white-space: nowrap; width: 1%; }
   table.excel-preview-table tbody tr.preview-zebra td { background: var(--surface-2); }
 </style>
 
@@ -307,12 +329,15 @@
       <div class="panel-head"><span class="step">§3</span><h2>Step 2（第一階段）：BOM 比對</h2></div>
       <p class="panel-note" style="margin-top:-8px; margin-bottom: 12px;">
         上傳客戶 BOM（.xlsx 或 .xls），用上方 §2 明細表每一列的 P/N 去比對 BOM 的「客戶料號」欄位，
-        找到後展開該筆底下的子項目樹，標示鐵件/塑膠件。
+        找到後展開該筆底下的子項目樹，標示鐵件/塑膠件。可上傳多個檔案，所有檔案的料號會合併成一個池子一起比對——
+        適用於不同出貨階/專案共用料號、但不在同一份 BOM 檔案裡的情況。
       </p>
       <div class="field-row" style="align-items:center; gap:10px;">
-        <input type="file" id="bomFileInput" accept=".xlsx,.xls">
+        <button class="add-row-btn" id="bomAddFileBtn" type="button">+ 新增 BOM 檔案</button>
+        <input type="file" id="bomFileInput" accept=".xlsx,.xls" style="display:none;">
         <span class="panel-note" id="bomFileStatus" style="margin:0;"></span>
       </div>
+      <div id="bomFileList" style="margin-top:10px;"></div>
       <div id="bomMatchResult" style="margin-top:14px;"></div>
     </section>
 
@@ -325,17 +350,21 @@
       </p>
 
       <div class="stamping-ref-block">
-        <div class="stamping-ref-head">機台噸位 × 工程配置 參考表（可自行新增組合）</div>
-        <div class="table-scroll">
-          <table class="ref-table">
-            <thead><tr><th>機台噸位</th><th>工程配置</th><th></th></tr></thead>
-            <tbody id="tonnageRefBody"></tbody>
-          </table>
-        </div>
-        <div class="field-row" style="align-items:center; gap:8px; margin-top:8px;">
-          <input type="text" id="newTonnageInput" placeholder="例如：350T" style="width:110px; flex:none;">
-          <input type="text" id="newConfigInput" placeholder="例如：TS" style="width:90px; flex:none;">
-          <button class="add-row-btn" id="addRefRowBtn" type="button">+ 新增組合</button>
+        <button class="stamping-ref-toggle" id="tonnageRefToggle" type="button" aria-expanded="false">
+          <span class="toggle-arrow">▸</span> 機台噸位 × 工程配置 參考表（可自行新增組合）
+        </button>
+        <div class="stamping-ref-body" id="tonnageRefBodyWrap" style="display:none;">
+          <div class="table-scroll">
+            <table class="ref-table">
+              <thead><tr><th>機台噸位</th><th>工程配置</th><th></th></tr></thead>
+              <tbody id="tonnageRefBody"></tbody>
+            </table>
+          </div>
+          <div class="field-row" style="align-items:center; gap:8px; margin-top:8px;">
+            <input type="text" id="newTonnageInput" placeholder="例如：350T" style="width:110px; flex:none;">
+            <input type="text" id="newConfigInput" placeholder="例如：TS" style="width:90px; flex:none;">
+            <button class="add-row-btn" id="addRefRowBtn" type="button">+ 新增組合</button>
+          </div>
         </div>
       </div>
 
@@ -378,10 +407,21 @@
 
   var state = loadState();
 
-  // BOM rows from the most recent successful upload -- not persisted (the file itself
-  // isn't saved anywhere), just cached in memory so "計算沖壓機台需求" can reuse the
-  // last parsed BOM without requiring a re-upload.
-  var lastBomRows = null;
+  // BOM rows merged across every uploaded file -- not persisted (the files themselves
+  // aren't saved anywhere), just cached in memory so "計算沖壓機台需求" can reuse the
+  // merged BOM without requiring a re-upload. uploadedBomFiles holds one entry per
+  // uploaded file (name/sheet/rows) so files can be listed and individually removed;
+  // lastBomRows is always the concatenation of every entry's bomRows, recomputed on
+  // every add/remove -- 2026-09-04 added multi-file support (shared parts across
+  // shipping stages/projects aren't always in the same BOM export).
+  var uploadedBomFiles = [];
+  var lastBomRows = [];
+
+  // Result of the most recent "計算沖壓機台需求" click -- not persisted, just cached so
+  // "匯出 Excel" can attach it as a second worksheet without recomputing. Stays whatever
+  // was last calculated (same convention as the Excel preview: it doesn't auto-refresh on
+  // every keystroke, the user re-runs the button when they want fresh numbers).
+  var lastDemandData = null;
 
   function loadState() {
     try {
@@ -424,10 +464,14 @@
     resetBtn: document.getElementById("resetBtn"),
     exportBtn: document.getElementById("exportBtn"),
     toast: document.getElementById("toast"),
+    bomAddFileBtn: document.getElementById("bomAddFileBtn"),
     bomFileInput: document.getElementById("bomFileInput"),
     bomFileStatus: document.getElementById("bomFileStatus"),
+    bomFileList: document.getElementById("bomFileList"),
     bomMatchResult: document.getElementById("bomMatchResult"),
     tonnageRefBody: document.getElementById("tonnageRefBody"),
+    tonnageRefToggle: document.getElementById("tonnageRefToggle"),
+    tonnageRefBodyWrap: document.getElementById("tonnageRefBodyWrap"),
     newTonnageInput: document.getElementById("newTonnageInput"),
     newConfigInput: document.getElementById("newConfigInput"),
     addRefRowBtn: document.getElementById("addRefRowBtn"),
@@ -737,30 +781,34 @@
   // Shared by the real .xlsx export and the on-screen preview, so the two can never drift
   // apart -- both just render whatever this returns, one to ExcelJS cells, one to <td>s.
   function computeExportData() {
-    // Forecast (Per Year/Month) are repeated-per-row columns, same treatment as
-    // Project Name -- 2026-09-03 confirmed, not a separate info block.
-    var MAIN_COL_COUNT = 10;
+    // Forecast (Per Year/Month) render as one inline label/value/label/value row right
+    // under the title, above the header -- 2026-09-04 moved back out of the repeated-
+    // per-row columns (the 2026-09-03 approach) per user request.
+    var MAIN_COL_COUNT = 8;
     var MONTH_COL_COUNT = 12;
     var monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 
     var columns = [
       { header: "Project Name", width: 16, wrap: true, capWidth: 26 },
-      { header: "Forecast (Per Year)", width: 14, wrap: false },
-      { header: "Forecast (Per Month)", width: 14, wrap: false },
       { header: "Item", width: 8, wrap: false },
       { header: "類型", width: 13, wrap: false },
       { header: "P/N", width: 14, wrap: false },
       { header: "Description", width: 20, wrap: true, capWidth: 32 },
       { header: "生產地", width: 12, wrap: true, capWidth: 20 },
-      { header: "Q'Ty", width: 9, wrap: false },
-      { header: "Usage (Per Rack)", width: 16, wrap: false }
+      { header: "Q'Ty", width: 9, wrap: false, numeric: true },
+      { header: "Usage (Per Rack)", width: 16, wrap: false, numeric: true }
     ];
-    monthNames.forEach(function (m) { columns.push({ header: m, width: 9, wrap: false }); });
+    monthNames.forEach(function (m) { columns.push({ header: m, width: 9, wrap: false, numeric: true }); });
 
     var title = (state.projectName || "出貨階規劃器") + " — 出貨階明細表";
 
-    // only 匯出時間 remains an "info row" now (real export only, appended after the
-    // table -- see buildWorkbook); Forecast moved into the columns above.
+    var forecastRow = [
+      ["Forecast (Per Year)", state.forecastPerYear || ""],
+      ["Forecast (Per Month)", state.forecastPerMonth || ""]
+    ];
+
+    // only 匯出時間 remains an "info row" (real export only, appended after the table --
+    // see buildWorkbook).
     var infoRows = [];
 
     var yearNow = new Date().getFullYear();
@@ -772,8 +820,6 @@
       var monthVal = num(row.usage) * perMonth;
       var values = [
         state.projectName || "",
-        state.forecastPerYear || "",
-        state.forecastPerMonth || "",
         i + 1,
         row.type || "",
         row.pn || "",
@@ -787,7 +833,7 @@
     });
 
     return {
-      title: title, infoRows: infoRows, columns: columns,
+      title: title, forecastRow: forecastRow, infoRows: infoRows, columns: columns,
       MAIN_COL_COUNT: MAIN_COL_COUNT, MONTH_COL_COUNT: MONTH_COL_COUNT,
       yearLabel: yearLabel, dataRows: dataRows
     };
@@ -831,6 +877,23 @@
     styleCell(titleCell, null, { bold: true, size: 15, align: LEFT_NOWRAP });
     nextRow++;
 
+    // Forecast (Per Year) / Forecast (Per Month), one row: label, value, label, value.
+    var forecastRowIndex = nextRow++;
+    ws.mergeCells("A" + forecastRowIndex + ":B" + forecastRowIndex);
+    var fLabel1 = ws.getCell("A" + forecastRowIndex);
+    fLabel1.value = data.forecastRow[0][0];
+    styleCell(fLabel1, null, { bold: true, align: LEFT_NOWRAP });
+    var fValue1 = ws.getCell("C" + forecastRowIndex);
+    fValue1.value = data.forecastRow[0][1];
+    styleCell(fValue1, null, { align: CENTER_NOWRAP });
+    ws.mergeCells("D" + forecastRowIndex + ":E" + forecastRowIndex);
+    var fLabel2 = ws.getCell("D" + forecastRowIndex);
+    fLabel2.value = data.forecastRow[1][0];
+    styleCell(fLabel2, null, { bold: true, align: LEFT_NOWRAP });
+    var fValue2 = ws.getCell("F" + forecastRowIndex);
+    fValue2.value = data.forecastRow[1][1];
+    styleCell(fValue2, null, { align: CENTER_NOWRAP });
+
     // two-row header: Project Name..Usage span both rows; 年分 spans the 12 month columns
     // on row 1, with the individual month labels on row 2 underneath it.
     function colLetter(idx0) { return String.fromCharCode("A".charCodeAt(0) + idx0); }
@@ -860,7 +923,12 @@
       styleCell(monthCell, monthColIdx0, { bold: true, fill: HEADER_FILL });
     }
 
-    var colMax = columns.map(function (col) { return col.wrap ? displayWidth(col.header) : 0; });
+    // colMax tracks the widest content seen per column -- starting from the header text --
+    // for EVERY column, not just wrap ones. A column that "looks" fixed-format (numbers,
+    // short codes) can still turn out too narrow once real data and a custom font are in
+    // the mix; a static guess is how columns end up silently clipped or (for numbers)
+    // rendered as "4E+07" instead of the real value.
+    var colMax = columns.map(function (col) { return displayWidth(col.header); });
 
     data.dataRows.forEach(function (values, i) {
       var r = headerRow2Index + 1 + i;
@@ -869,11 +937,12 @@
       values.forEach(function (v, ci) {
         var cell = ws.getCell(r, ci + 1);
         cell.value = v;
-        styleCell(cell, ci, isEven ? { fill: ZEBRA_FILL } : {});
         var col = columns[ci];
+        styleCell(cell, ci, isEven ? { fill: ZEBRA_FILL } : {});
+        if (col.numeric) cell.numFmt = "0"; // too narrow -> #### instead of silently going scientific
+        var w = displayWidth(v);
+        if (w > colMax[ci]) colMax[ci] = w;
         if (col.wrap) {
-          var w = displayWidth(v);
-          colMax[ci] = Math.max(colMax[ci], w);
           var lines = Math.max(1, Math.ceil(w / (col.capWidth || col.width)));
           if (lines > maxLines) maxLines = lines;
         }
@@ -881,10 +950,16 @@
       ws.getRow(r).height = Math.max(18, maxLines * 16 + 6);
     });
 
+    // Grow every column to fit its widest content (header included). Wrap columns are
+    // capped at capWidth and rely on wrapping + the row-height compensation above;
+    // non-wrap columns have nothing to fall back on, so they grow uncapped.
     columns.forEach(function (col, i) {
-      if (!col.wrap) return;
-      var needed = Math.min(Math.max(colMax[i] + 2, col.width), col.capWidth || col.width);
-      ws.getColumn(i + 1).width = needed;
+      var needed = colMax[i] + (col.wrap ? 2 : 4);
+      if (col.wrap) {
+        ws.getColumn(i + 1).width = Math.min(Math.max(needed, col.width), col.capWidth || col.width);
+      } else {
+        ws.getColumn(i + 1).width = Math.max(needed, col.width);
+      }
     });
 
     // Forecast (and, for the real export only, 匯出時間) render after the table, not
@@ -902,7 +977,61 @@
       styleCell(valueCell, null, { align: LEFT_NOWRAP });
     });
 
+    // If §4's "計算沖壓機台需求" has been run, attach its result as a second worksheet in
+    // the same workbook -- 2026-09-04 confirmed. Otherwise the export stays single-sheet.
+    if (lastDemandData) {
+      addDemandSheet(wb, fontName, lastDemandData);
+    }
+
     return wb;
+  }
+
+  // Renders §4's stamping-demand result as a second worksheet, styled consistently with
+  // the main sheet (borders, header fill, zebra rows, auto-sized columns, plain numFmt on
+  // the count columns). Rows for combos not in the reference table get the same warn-color
+  // highlight they have on screen, taking priority over zebra striping.
+  function addDemandSheet(wb, fontName, demandData) {
+    var ws2 = wb.addWorksheet("沖壓機台需求統計");
+    var CENTER_NOWRAP = { horizontal: "center", vertical: "middle", wrapText: false };
+    var THIN = { style: "thin", color: { argb: "FFB9C3CC" } };
+    var BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+    var HEADER_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCEEEC" } };
+    var ZEBRA_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F4F6" } };
+    var NEW_COMBO_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFBEDDB" } };
+
+    function styleCell(cell, opts) {
+      opts = opts || {};
+      cell.font = { name: fontName, size: opts.size || 11, bold: !!opts.bold };
+      cell.alignment = CENTER_NOWRAP;
+      cell.border = BORDER;
+      if (opts.fill) cell.fill = opts.fill;
+    }
+
+    var headers = ["機台噸位", "工程配置"].concat(demandData.sites.map(function (s) { return s + " 需求數"; }));
+    var colMax = headers.map(function (h) { return displayWidth(h); });
+
+    headers.forEach(function (h, i) {
+      var cell = ws2.getCell(1, i + 1);
+      cell.value = h;
+      styleCell(cell, { bold: true, fill: HEADER_FILL });
+    });
+
+    demandData.rows.forEach(function (row, ri) {
+      var r = ri + 2;
+      var isEven = (ri + 1) % 2 === 0;
+      var fill = row.inRef ? (isEven ? ZEBRA_FILL : null) : NEW_COMBO_FILL;
+      var values = [row.tonnage, row.config].concat(demandData.sites.map(function (s) { return row.counts[s]; }));
+      values.forEach(function (v, ci) {
+        var cell = ws2.getCell(r, ci + 1);
+        cell.value = v;
+        styleCell(cell, { fill: fill });
+        if (ci >= 2) cell.numFmt = "0";
+        var w = displayWidth(v);
+        if (w > colMax[ci]) colMax[ci] = w;
+      });
+    });
+
+    colMax.forEach(function (w, i) { ws2.getColumn(i + 1).width = Math.max(w + 4, 9); });
   }
 
   // Renders an on-screen HTML mirror of computeExportData() -- same title/info rows
@@ -931,6 +1060,28 @@
     var caption = document.createElement("caption");
     caption.textContent = data.title;
     table.appendChild(caption);
+
+    var forecastBody = document.createElement("tbody");
+    var forecastTr = document.createElement("tr");
+    forecastTr.className = "preview-forecast-row";
+    var fLabel1 = document.createElement("td");
+    fLabel1.className = "preview-info-label";
+    fLabel1.colSpan = 2;
+    fLabel1.textContent = data.forecastRow[0][0];
+    var fValue1 = document.createElement("td");
+    fValue1.textContent = data.forecastRow[0][1];
+    var fLabel2 = document.createElement("td");
+    fLabel2.className = "preview-info-label";
+    fLabel2.colSpan = 2;
+    fLabel2.textContent = data.forecastRow[1][0];
+    var fValue2 = document.createElement("td");
+    fValue2.textContent = data.forecastRow[1][1];
+    forecastTr.appendChild(fLabel1);
+    forecastTr.appendChild(fValue1);
+    forecastTr.appendChild(fLabel2);
+    forecastTr.appendChild(fValue2);
+    forecastBody.appendChild(forecastTr);
+    table.appendChild(forecastBody);
 
     var thead = document.createElement("thead");
     var headRow1 = document.createElement("tr");
@@ -1137,23 +1288,36 @@
     return "unknown";
   }
 
-  // Finds the BOM row whose 客戶料號 matches this P/N, then collects every row below it
-  // up to (but not including) the next row that has its own 項次 value -- that run of
-  // rows is the matched item's expanded sub-tree.
+  // Finds every BOM row across the merged multi-file pool whose 客戶料號 matches this P/N,
+  // then for EACH occurrence collects every row below it up to (but not including) the next
+  // row with its own 項次 value -- that run of rows is that occurrence's expanded sub-tree.
+  // All occurrences' sub-trees are concatenated into one combined group. A P/N legitimately
+  // matching more than once happens when the same shared part shows up in more than one
+  // uploaded BOM file (different shipping stages/projects, not all in one export) -- those
+  // are merged together for machine-demand counting, and `matchCount` tells the caller how
+  // many occurrences were found so it can flag the merge to the user (2026-09-04 confirmed).
   function matchBomForPn(bomRows, pn) {
     if (!pn) return null;
     var target = pn.trim().toUpperCase();
-    var idx = -1;
-    for (var i = 0; i < bomRows.length; i++) {
-      if ((bomRows[i].customerPn || "").toUpperCase() === target) { idx = i; break; }
+    var combined = [];
+    var matchCount = 0;
+    var i = 0;
+    while (i < bomRows.length) {
+      if ((bomRows[i].customerPn || "").toUpperCase() === target) {
+        matchCount++;
+        combined.push(bomRows[i]);
+        var j = i + 1;
+        for (; j < bomRows.length; j++) {
+          if (bomRows[j].itemNo) break;
+          combined.push(bomRows[j]);
+        }
+        i = j;
+      } else {
+        i++;
+      }
     }
-    if (idx === -1) return null;
-    var group = [bomRows[idx]];
-    for (var j = idx + 1; j < bomRows.length; j++) {
-      if (bomRows[j].itemNo) break;
-      group.push(bomRows[j]);
-    }
-    return group;
+    if (matchCount === 0) return null;
+    return { items: combined, matchCount: matchCount };
   }
 
   function escapeHtml(s) {
@@ -1184,17 +1348,34 @@
       head.appendChild(pnTag);
       var badge = document.createElement("span");
       badge.className = "badge " + (group ? "matched" : "unmatched");
-      badge.textContent = group ? ("比對到，展開 " + group.length + " 筆") : "未比對到";
+      badge.textContent = group ? ("比對到，展開 " + group.items.length + " 筆") : "未比對到";
       head.appendChild(badge);
-      wrap.appendChild(head);
 
       if (group) {
+        var toggleBtn = document.createElement("button");
+        toggleBtn.className = "bom-group-toggle";
+        toggleBtn.type = "button";
+        toggleBtn.textContent = "展開";
+        head.appendChild(toggleBtn);
+      }
+      wrap.appendChild(head);
+
+      if (group && group.matchCount > 1) {
+        var dupNote = document.createElement("p");
+        dupNote.className = "bom-dup-note";
+        dupNote.textContent = "⚠ 此料號在上傳的檔案中重複出現 " + group.matchCount + " 次，已合併一起計算機台需求，請確認是否正確。";
+        wrap.appendChild(dupNote);
+      }
+
+      if (group) {
+        var tableWrap = document.createElement("div");
+        tableWrap.style.display = "none"; // collapsed by default -- expand on demand per item
         var table = document.createElement("table");
         var thead = document.createElement("thead");
         thead.innerHTML = "<tr><th>項次</th><th>品名</th><th>客戶料號</th><th>材質</th><th>機台噸位</th><th>工程數</th></tr>";
         table.appendChild(thead);
         var tbody = document.createElement("tbody");
-        group.forEach(function (r) {
+        group.items.forEach(function (r) {
           var material = classifyMaterial(r.customerPn);
           var materialLabel = material === "iron" ? "鐵件" : material === "plastic" ? "塑膠件" : "-";
           var tr = document.createElement("tr");
@@ -1208,12 +1389,67 @@
           tbody.appendChild(tr);
         });
         table.appendChild(tbody);
-        wrap.appendChild(table);
+        tableWrap.appendChild(table);
+        wrap.appendChild(tableWrap);
+
+        toggleBtn.addEventListener("click", function () {
+          var isHidden = tableWrap.style.display === "none";
+          tableWrap.style.display = isHidden ? "block" : "none";
+          toggleBtn.textContent = isHidden ? "收合" : "展開";
+        });
       }
 
       el.bomMatchResult.appendChild(wrap);
     });
   }
+
+  // Re-derives lastBomRows (the merged pool used for matching) from uploadedBomFiles,
+  // then re-renders the file list and the match results against the new merged pool.
+  function recomputeMergedBom() {
+    lastBomRows = [];
+    uploadedBomFiles.forEach(function (f) { lastBomRows = lastBomRows.concat(f.bomRows); });
+    renderBomFileList();
+    renderBomMatchResult(lastBomRows);
+  }
+
+  function renderBomFileList() {
+    el.bomFileList.innerHTML = "";
+    if (uploadedBomFiles.length === 0) return;
+
+    var summary = document.createElement("p");
+    summary.className = "bom-file-summary";
+    summary.textContent = "已上傳 " + uploadedBomFiles.length + " 個檔案，合併共 " + lastBomRows.length + " 筆料號列。";
+    el.bomFileList.appendChild(summary);
+
+    var listWrap = document.createElement("div");
+    listWrap.className = "bom-file-list";
+    uploadedBomFiles.forEach(function (f) {
+      var row = document.createElement("div");
+      row.className = "bom-file-row";
+      var name = document.createElement("span");
+      name.className = "bom-file-name";
+      name.textContent = f.name + "（工作表：" + f.sheetName + "，" + f.bomRows.length + " 筆）";
+      row.appendChild(name);
+      var delBtn = document.createElement("button");
+      delBtn.className = "row-del";
+      delBtn.type = "button";
+      delBtn.textContent = "✕";
+      delBtn.title = "移除此檔案";
+      delBtn.addEventListener("click", function () {
+        uploadedBomFiles = uploadedBomFiles.filter(function (x) { return x.id !== f.id; });
+        el.bomFileStatus.textContent = "已移除「" + f.name + "」。";
+        recomputeMergedBom();
+      });
+      row.appendChild(delBtn);
+      listWrap.appendChild(row);
+    });
+    el.bomFileList.appendChild(listWrap);
+  }
+
+  el.bomAddFileBtn.addEventListener("click", function () {
+    el.bomFileInput.value = ""; // reset so picking the same file again still fires change
+    el.bomFileInput.click();
+  });
 
   el.bomFileInput.addEventListener("change", function () {
     var file = el.bomFileInput.files && el.bomFileInput.files[0];
@@ -1223,7 +1459,6 @@
       return;
     }
     el.bomFileStatus.textContent = "讀取中…";
-    el.bomMatchResult.innerHTML = "";
 
     var reader = new FileReader();
     reader.onload = function () {
@@ -1242,9 +1477,12 @@
           return;
         }
         var bomRows = parseBomRows(aoa, headerInfo.columns, headerInfo.headerRow);
-        el.bomFileStatus.textContent = "已讀取「" + file.name + "」（工作表：" + sheetName + "），共 " + bomRows.length + " 筆料號列。";
-        renderBomMatchResult(bomRows);
-        lastBomRows = bomRows;
+        uploadedBomFiles.push({
+          id: Date.now() + "-" + Math.random().toString(36).slice(2),
+          name: file.name, sheetName: sheetName, bomRows: bomRows
+        });
+        el.bomFileStatus.textContent = "已新增「" + file.name + "」（工作表：" + sheetName + "），共 " + bomRows.length + " 筆料號列。";
+        recomputeMergedBom();
       } catch (err) {
         el.bomFileStatus.textContent = "解析失敗：" + (err && err.message ? err.message : "未知錯誤");
       }
@@ -1256,6 +1494,12 @@
   });
 
   // ---------- Step 2 (stage 2): tonnage/process parsing, reference table, demand counts ----------
+
+  el.tonnageRefToggle.addEventListener("click", function () {
+    var expanded = el.tonnageRefToggle.getAttribute("aria-expanded") === "true";
+    el.tonnageRefToggle.setAttribute("aria-expanded", String(!expanded));
+    el.tonnageRefBodyWrap.style.display = expanded ? "none" : "block";
+  });
 
   function renderTonnageRefTable() {
     var body = el.tonnageRefBody;
@@ -1346,7 +1590,7 @@
       if (!group) return;
       var site = getEffectiveSite(rows, i) || "(未填)";
       var seenForRow = {};
-      group.forEach(function (sub) {
+      group.items.forEach(function (sub) {
         if (classifyMaterial(sub.customerPn) !== "iron") return;
         if (!sub.tonnage || !sub.process) return;
         var pairs = parseTonnageProcess(sub.tonnage, sub.process);
@@ -1433,7 +1677,7 @@
   }
 
   el.calcDemandBtn.addEventListener("click", function () {
-    if (!lastBomRows) {
+    if (!lastBomRows || lastBomRows.length === 0) {
       el.demandResult.innerHTML = '<p class="bom-error">請先在上方 §3 上傳並比對過 BOM，再計算沖壓機台需求。</p>';
       return;
     }
@@ -1441,7 +1685,8 @@
       el.demandResult.innerHTML = '<p class="bom-error">§2 明細表目前沒有任何出貨階，無法統計。</p>';
       return;
     }
-    renderDemandResult(computeStampingDemand());
+    lastDemandData = computeStampingDemand();
+    renderDemandResult(lastDemandData);
   });
 
   renderAll();
