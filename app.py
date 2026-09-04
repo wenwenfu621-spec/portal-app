@@ -126,7 +126,7 @@ TRIP_DAILY_LOG_TESTERS = {"ETW00375"}
 # 「出貨階規劃」同樣是分階段上線中的新功能，目前只給測試名單裡的員工編號看得到
 # 選單入口；真正擋非測試帳號的關卡在 pages/5_出貨階規劃.py 頁面自己的伺服器端
 # 檢查。測試完成、要開放給全體同仁時，把這個白名單判斷拿掉即可。
-CAPACITY_SCHEDULER_TESTERS = {"ETW00375"}
+CAPACITY_SCHEDULER_TESTERS = {"ETW00375", "ETW00378"}
 
 
 def _inject_background_css(image_path: Path) -> None:

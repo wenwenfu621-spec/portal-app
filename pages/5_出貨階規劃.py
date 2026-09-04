@@ -16,7 +16,7 @@ from portal_theme import inject_glass_theme
 # 跟 app.py 選單那邊用同一份白名單常數會比較理想，但 app.py 是入口頁、這裡是子頁面，
 # Streamlit 頁面之間沒有共用模組層級變數的機制，兩邊各自維護一份、要新增測試帳號時
 # 兩處都要改。之後正式開放給全體同仁時，把這裡跟 app.py 的判斷式一起拿掉即可。
-CAPACITY_SCHEDULER_TESTERS = {"ETW00375"}
+CAPACITY_SCHEDULER_TESTERS = {"ETW00375", "ETW00378"}
 
 APP_VERSION = get_git_version()
 
