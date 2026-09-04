@@ -1277,14 +1277,47 @@
       if (!customerPn && !nameZh && !nameEn && !itemNo && !tonnage && !process) continue; // fully blank row
       rows.push({ excelRow: r + 1, itemNo: itemNo, customerPn: customerPn, name: nameZh || nameEn, tonnage: tonnage, process: process });
     }
-    return rows;
+    return mergeSplitTonnageRows(rows);
   }
 
-  // FBF- = 鐵件, EBF- = 塑膠件 (2026-09-03 confirmed rule, based on 客戶料號 prefix)
-  function classifyMaterial(customerPn) {
+  // Some BOM templates spread one part's 機台噸位/工程數 across two adjacent rows (e.g. a
+  // merged 機台噸位 cell spanning a "清洗" row and the "冲压" row that carries 工程數) --
+  // each row alone looks incomplete and would otherwise be silently skipped. When adjacent
+  // rows share a non-empty 客戶料號 and together hold a complete tonnage+process pair,
+  // merge them into one row (keep the first row's identity, borrow whichever field is
+  // missing from its neighbor) and drop the duplicate -- calculated once, not twice
+  // (2026-09-04 confirmed).
+  function mergeSplitTonnageRows(rows) {
+    var merged = [];
+    for (var i = 0; i < rows.length; i++) {
+      var cur = rows[i];
+      var next = rows[i + 1];
+      var complementary = next && cur.customerPn && cur.customerPn === next.customerPn && (
+        (cur.tonnage && !cur.process && !next.tonnage && next.process) ||
+        (!cur.tonnage && cur.process && next.tonnage && !next.process)
+      );
+      if (complementary) {
+        merged.push({
+          excelRow: cur.excelRow, itemNo: cur.itemNo, customerPn: cur.customerPn, name: cur.name,
+          tonnage: cur.tonnage || next.tonnage, process: cur.process || next.process
+        });
+        i++; // consumed next as part of this merge
+      } else {
+        merged.push(cur);
+      }
+    }
+    return merged;
+  }
+
+  // FBF- = 鐵件, EBF- = 塑膠件 (2026-09-03 confirmed rule, based on 客戶料號 prefix). A row
+  // that's neither prefix but still carries 機台噸位/工程數 data is also treated as 鐵件
+  // (2026-09-04 confirmed) -- some BOM templates don't consistently use the FBF prefix for
+  // every part that actually needs stamping.
+  function classifyMaterial(customerPn, tonnage, process) {
     var pn = (customerPn || "").toUpperCase();
     if (pn.indexOf("FBF") === 0) return "iron";
     if (pn.indexOf("EBF") === 0) return "plastic";
+    if (tonnage && process) return "iron";
     return "unknown";
   }
 
@@ -1376,7 +1409,7 @@
         table.appendChild(thead);
         var tbody = document.createElement("tbody");
         group.items.forEach(function (r) {
-          var material = classifyMaterial(r.customerPn);
+          var material = classifyMaterial(r.customerPn, r.tonnage, r.process);
           var materialLabel = material === "iron" ? "鐵件" : material === "plastic" ? "塑膠件" : "-";
           var tr = document.createElement("tr");
           tr.innerHTML =
@@ -1543,27 +1576,61 @@
     renderTonnageRefTable();
   });
 
-  // Splits the BOM「機台噸位」/「工程數」compound values and pairs them positionally
-  // (§8.3): 機台噸位 by "&", 工程數 by "+", Nth tonnage pairs with Nth process code.
-  // A leading digit on a process token (e.g. "3S") is a repeat count, not part of the
-  // config code itself. A bare "S" with NO digit prefix is shorthand for "TS" (2026-09-03
-  // confirmed) -- "3S" stays as config "S" with qty 3, it is NOT normalized to "TS".
+  // Splits the BOM「機台噸位」/「工程數」compound values into (tonnage, config, qty)
+  // pairs. Handles two source conventions, unified into one pass:
+  //
+  // - 機台噸位 tokens come from splitting on line breaks AND "&" (older BOMs put multiple
+  //   tonnages on one line joined by "&"; newer ones put one tonnage per line). A token may
+  //   carry its own "*N" quantity suffix (e.g. "300T*7", 2026-09-04 format) -- when
+  //   present, that IS the real per-tonnage quantity; when absent, quantity falls back to
+  //   工程數's positional digit (older "&"/"+" format, §8.3).
+  // - 工程數 tokens come from splitting on "+". A leading digit is a repeat count, not part
+  //   of the config code. "S" always means "TS" -- with or without a digit prefix ("S",
+  //   "3S", "11S" are all shorthand for TS; 2026-09-04 confirmed "11S"/"11TS" mean the same
+  //   thing). A token that's a bare digit with no letter at all (e.g. the "2" in "P+2")
+  //   also defaults to "TS" -- this is how "P+N" reads: first tonnage is P, the rest are TS
+  //   (2026-09-04 confirmed against real BOM examples).
+  // - When there's exactly ONE 工程數 token but MORE than one 機台噸位 token, that single
+  //   code covers every tonnage line, each keeping its own "*N" quantity -- the code's own
+  //   digit prefix in this shape (e.g. "12S" for tonnage lines summing 1+7+4=12) is only a
+  //   total/checksum across every line, NOT a quantity to attach to any one line.
   function parseTonnageProcess(tonnageStr, processStr) {
-    var tonnages = String(tonnageStr || "").split("&").map(function (s) { return s.trim(); }).filter(Boolean);
-    var processes = String(processStr || "").split("+").map(function (s) { return s.trim(); }).filter(Boolean);
-    var pairs = [];
-    var n = Math.min(tonnages.length, processes.length);
-    for (var i = 0; i < n; i++) {
-      var raw = processes[i];
+    tonnageStr = String(tonnageStr || "");
+    processStr = String(processStr || "");
+    if (!tonnageStr.trim() || !processStr.trim()) return [];
+
+    var entries = tonnageStr.split(/\r?\n/).reduce(function (acc, line) {
+      return acc.concat(line.split("&"));
+    }, []).map(function (s) { return s.trim(); }).filter(Boolean).map(function (t) {
+      var m = t.match(/^(.+?)\*(\d+)$/);
+      return m ? { tonnage: m[1].trim(), qty: parseInt(m[2], 10) || 1, hasOwnQty: true }
+                : { tonnage: t, qty: 1, hasOwnQty: false };
+    });
+
+    var processEntries = processStr.split("+").map(function (s) { return s.trim(); }).filter(Boolean).map(function (raw) {
       var m = raw.match(/^(\d+)(.*)$/);
       var qty = 1, config = raw;
       if (m) {
         qty = parseInt(m[1], 10) || 1;
         config = m[2].trim();
-      } else if (raw === "S") {
-        config = "TS";
       }
-      if (tonnages[i] && config) pairs.push({ tonnage: tonnages[i], config: config, qty: qty });
+      if (config === "S" || config === "") config = "TS";
+      return { config: config, qty: qty };
+    });
+
+    var pairs = [];
+    if (entries.length > 1 && processEntries.length === 1) {
+      entries.forEach(function (e) {
+        if (e.tonnage) pairs.push({ tonnage: e.tonnage, config: processEntries[0].config, qty: e.qty });
+      });
+    } else {
+      var n = Math.min(entries.length, processEntries.length);
+      for (var i = 0; i < n; i++) {
+        var e = entries[i], p = processEntries[i];
+        if (e.tonnage && p.config) {
+          pairs.push({ tonnage: e.tonnage, config: p.config, qty: e.hasOwnQty ? e.qty : p.qty });
+        }
+      }
     }
     return pairs;
   }
@@ -1591,7 +1658,7 @@
       var site = getEffectiveSite(rows, i) || "(未填)";
       var seenForRow = {};
       group.items.forEach(function (sub) {
-        if (classifyMaterial(sub.customerPn) !== "iron") return;
+        if (classifyMaterial(sub.customerPn, sub.tonnage, sub.process) !== "iron") return;
         if (!sub.tonnage || !sub.process) return;
         var pairs = parseTonnageProcess(sub.tonnage, sub.process);
         pairs.forEach(function (p) {
