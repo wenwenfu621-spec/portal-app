@@ -173,6 +173,18 @@
   .bom-file-summary { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
   .bom-dup-note { color: var(--warn-strong); font-size: 12px; padding: 4px 12px 8px; }
 
+  .format-hint-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .format-hint-card {
+    display: flex; align-items: center; gap: 8px; flex: 1 1 200px;
+    border-radius: 7px; padding: 7px 12px; font-size: 12px;
+  }
+  .format-hint-card.ok { background: var(--accent-soft); color: var(--accent-strong); }
+  .format-hint-card.warn { background: var(--warn-soft); color: var(--warn-strong); }
+  .format-hint-badge {
+    font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 12px;
+    padding: 2px 7px; border-radius: 4px; background: rgba(255,255,255,0.5); flex: none;
+  }
+
   .stamping-ref-block { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 4px; }
   .stamping-ref-head { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
   .stamping-ref-toggle {
@@ -193,7 +205,11 @@
   table.ref-table th { text-align: left; padding: 6px 10px; color: var(--text-faint); font-weight: 600; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--border); white-space: nowrap; }
   table.ref-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
   table.ref-table tr:last-child td { border-bottom: none; }
-  table.demand-table { min-width: 480px; }
+  table.demand-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 480px; }
+  table.demand-table th { text-align: center; padding: 6px 10px; color: var(--text-faint); font-weight: 600; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.demand-table td { text-align: center; padding: 5px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.demand-table tr:last-child td { border-bottom: none; }
+  table.demand-table tbody tr:nth-child(even) td { background: var(--surface-2); }
   table.demand-table tr.demand-new-combo td:first-child, table.demand-table tr.demand-new-combo td:nth-child(2) {
     color: var(--warn-strong); font-weight: 600;
   }
@@ -258,6 +274,7 @@
   table.excel-preview-table .preview-info-row td.preview-info-label { font-weight: 600; white-space: nowrap; width: 1%; }
   table.excel-preview-table .preview-forecast-row td { text-align: left; }
   table.excel-preview-table .preview-forecast-row td.preview-info-label { font-weight: 600; white-space: nowrap; width: 1%; }
+  table.excel-preview-table img.preview-thumb { width: 40px; height: 40px; object-fit: contain; display: block; margin: 0 auto; }
   table.excel-preview-table tbody tr.preview-zebra td { background: var(--surface-2); }
 </style>
 
@@ -337,6 +354,16 @@
         <input type="file" id="bomFileInput" accept=".xlsx,.xls" style="display:none;">
         <span class="panel-note" id="bomFileStatus" style="margin:0;"></span>
       </div>
+      <div class="format-hint-row">
+        <div class="format-hint-card ok">
+          <span class="format-hint-badge">.xlsx</span>
+          <span>建議格式 — 簡圖會一併抓取匯出</span>
+        </div>
+        <div class="format-hint-card warn">
+          <span class="format-hint-badge">.xls</span>
+          <span>舊格式，可正常比對，但無法抓取簡圖</span>
+        </div>
+      </div>
       <div id="bomFileList" style="margin-top:10px;"></div>
       <div id="bomMatchResult" style="margin-top:14px;"></div>
     </section>
@@ -379,6 +406,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 (function () {
   "use strict";
@@ -778,13 +806,23 @@
     return (count > 1 ? base + "-" + (count - 1) : base) + ".xlsx";
   }
 
+  // The 簡圖 for a §2 row's Excel export is the TOP-LEVEL BOM row's own picture (the part
+  // matching this P/N directly), not any of its expanded sub-items' pictures -- 2026-09-04
+  // confirmed. matchBomForPn's returned group always starts with that top-level row itself
+  // (items[0]), so this is just a lookup, no separate matching logic needed. Only present
+  // when the matched BOM came from an .xlsx upload with a picture in that row.
+  function getTopLevelBomImage(pn) {
+    var group = pn ? matchBomForPn(lastBomRows, pn) : null;
+    return (group && group.items[0] && group.items[0].image) || null;
+  }
+
   // Shared by the real .xlsx export and the on-screen preview, so the two can never drift
   // apart -- both just render whatever this returns, one to ExcelJS cells, one to <td>s.
   function computeExportData() {
     // Forecast (Per Year/Month) render as one inline label/value/label/value row right
     // under the title, above the header -- 2026-09-04 moved back out of the repeated-
     // per-row columns (the 2026-09-03 approach) per user request.
-    var MAIN_COL_COUNT = 8;
+    var MAIN_COL_COUNT = 9;
     var MONTH_COL_COUNT = 12;
     var monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 
@@ -793,6 +831,7 @@
       { header: "Item", width: 8, wrap: false },
       { header: "類型", width: 13, wrap: false },
       { header: "P/N", width: 14, wrap: false },
+      { header: "簡圖", width: 12, wrap: false, image: true },
       { header: "Description", width: 20, wrap: true, capWidth: 32 },
       { header: "生產地", width: 12, wrap: true, capWidth: 20 },
       { header: "Q'Ty", width: 9, wrap: false, numeric: true },
@@ -823,6 +862,7 @@
         i + 1,
         row.type || "",
         row.pn || "",
+        getTopLevelBomImage(row.pn),
         row.desc || "",
         getEffectiveSite(rows, i),
         num(row.qty),
@@ -929,16 +969,22 @@
     // the mix; a static guess is how columns end up silently clipped or (for numbers)
     // rendered as "4E+07" instead of the real value.
     var colMax = columns.map(function (col) { return displayWidth(col.header); });
+    var pendingImages = []; // {row0, col0, image} -- placed after the row/column loops below
 
     data.dataRows.forEach(function (values, i) {
       var r = headerRow2Index + 1 + i;
       var isEven = (i + 1) % 2 === 0;
       var maxLines = 1;
+      var hasImage = false;
       values.forEach(function (v, ci) {
         var cell = ws.getCell(r, ci + 1);
-        cell.value = v;
         var col = columns[ci];
         styleCell(cell, ci, isEven ? { fill: ZEBRA_FILL } : {});
+        if (col.image) {
+          if (v) { pendingImages.push({ row0: r - 1, col0: ci, image: v }); hasImage = true; }
+          return; // an image isn't a cell value ExcelJS can serialize -- skip value/width/numFmt
+        }
+        cell.value = v;
         if (col.numeric) cell.numFmt = "0"; // too narrow -> #### instead of silently going scientific
         var w = displayWidth(v);
         if (w > colMax[ci]) colMax[ci] = w;
@@ -947,7 +993,7 @@
           if (lines > maxLines) maxLines = lines;
         }
       });
-      ws.getRow(r).height = Math.max(18, maxLines * 16 + 6);
+      ws.getRow(r).height = Math.max(hasImage ? 60 : 18, maxLines * 16 + 6);
     });
 
     // Grow every column to fit its widest content (header included). Wrap columns are
@@ -960,6 +1006,16 @@
       } else {
         ws.getColumn(i + 1).width = Math.max(needed, col.width);
       }
+    });
+
+    // Embed each row's 簡圖, bounded to exactly fill its own cell (tl:br spanning one row/
+    // column -- a real "twoCellAnchor", not a fixed-pixel-size "oneCellAnchor"). This is
+    // what a normally-inserted Excel picture uses, and -- confirmed 2026-09-04 -- it's the
+    // anchor type that actually hides along with its row when AutoFilter hides that row; a
+    // fixed-size oneCellAnchor image was found to stay put and NOT hide, which is wrong.
+    pendingImages.forEach(function (p) {
+      var imageId = wb.addImage({ base64: "data:image/" + p.image.ext + ";base64," + p.image.base64, extension: p.image.ext });
+      ws.addImage(imageId, { tl: { col: p.col0, row: p.row0 }, br: { col: p.col0 + 1, row: p.row0 + 1 } });
     });
 
     // Forecast (and, for the real export only, 匯出時間) render after the table, not
@@ -983,7 +1039,114 @@
       addDemandSheet(wb, fontName, lastDemandData);
     }
 
+    // BOM overview sheet: every distinct iron/tonnage part matched across all §2 rows,
+    // deduped -- independent of the §4 calc button, just derived straight from the BOM
+    // match (2026-09-04 confirmed).
+    var overviewItems = computeBomOverviewItems();
+    if (overviewItems.length > 0) {
+      addBomOverviewSheet(wb, fontName, overviewItems);
+    }
+
     return wb;
+  }
+
+  // One 階層-1 row per matched §2 出貨階 (itemSeq = that row's own Item number, i.e. its
+  // position in §2 -- unmatched/blank-P/N rows are simply skipped, so the sequence can have
+  // gaps), followed by its 階層-2 iron parts (tonnage+process data, itemSeq blank). A part
+  // shared by more than one 出貨階 is only listed once total, under whichever 出貨階 it was
+  // first encountered under (2026-09-04 confirmed) -- 2026-09-04 also added the 階層-1
+  // 出貨階 row itself, which wasn't in the original version of this sheet.
+  function computeBomOverviewItems() {
+    var seen = {}; // key -> index into items, so a later occurrence can still fill in a
+                    // missing 簡圖 if the first occurrence encountered didn't have one (the
+                    // same part can appear more than once in a BOM tree, e.g. duplicated
+                    // across sub-assemblies, and not every occurrence carries a picture)
+    var items = [];
+    state.manualRows.forEach(function (row, rowIdx) {
+      var pn = (row.pn || "").trim();
+      if (!pn) return;
+      var group = matchBomForPn(lastBomRows, pn);
+      if (!group) return;
+      var top = group.items[0];
+      items.push({
+        itemSeq: rowIdx + 1, depth: 1, image: (top && top.image) || null, desc: (top && top.name) || "",
+        pn: (top && top.customerPn) || "", esonPn: (top && top.esonPn) || "",
+        tonnage: "", process: "", useQty: (top && top.useQty) || ""
+      });
+      group.items.forEach(function (sub) {
+        if (classifyMaterial(sub.customerPn, sub.tonnage, sub.process) !== "iron") return;
+        if (!sub.tonnage || !sub.process) return;
+        var key = (sub.customerPn || "").toUpperCase();
+        if (!key) return;
+        if (seen[key] != null) {
+          if (!items[seen[key]].image && sub.image) items[seen[key]].image = sub.image;
+          return;
+        }
+        seen[key] = items.length;
+        items.push({
+          itemSeq: null, depth: 2, image: sub.image || null, desc: sub.name || "",
+          pn: sub.customerPn || "", esonPn: sub.esonPn || "",
+          tonnage: sub.tonnage || "", process: sub.process || "", useQty: sub.useQty || ""
+        });
+      });
+    });
+    return items;
+  }
+
+  // Renders computeBomOverviewItems() as a third worksheet -- Item/階層/簡圖/敘述/P/N/
+  // ESON P/N/機台噸位/工程數, styled consistently with the other sheets. 簡圖 embeds the
+  // same way as the main sheet's (fixed thumbnail, moves/hides with its row).
+  function addBomOverviewSheet(wb, fontName, items) {
+    var ws3 = wb.addWorksheet("BOM總覽");
+    var CENTER_NOWRAP = { horizontal: "center", vertical: "middle", wrapText: false };
+    var THIN = { style: "thin", color: { argb: "FFB9C3CC" } };
+    var BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+    var HEADER_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCEEEC" } };
+    var ZEBRA_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F4F6" } };
+    var IMAGE_COL = 3; // 1-indexed column C = 簡圖
+
+    function styleCell(cell, opts) {
+      opts = opts || {};
+      cell.font = { name: fontName, size: opts.size || 11, bold: !!opts.bold };
+      cell.alignment = CENTER_NOWRAP;
+      cell.border = BORDER;
+      if (opts.fill) cell.fill = opts.fill;
+    }
+
+    var headers = ["Item", "階層", "簡圖", "敘述", "P/N", "ESON P/N", "機台噸位", "工程數", "用量"];
+    headers.forEach(function (h, i) {
+      var cell = ws3.getCell(1, i + 1);
+      cell.value = h;
+      styleCell(cell, { bold: true, fill: HEADER_FILL });
+    });
+
+    var colMax = headers.map(function (h) { return displayWidth(h); });
+
+    items.forEach(function (item, idx) {
+      var r = idx + 2;
+      var isEven = (idx + 1) % 2 === 0;
+      var isTop = item.depth === 1;
+      var values = [item.itemSeq == null ? "" : item.itemSeq, item.depth, null, item.desc, item.pn, item.esonPn, item.tonnage, item.process, item.useQty];
+      values.forEach(function (v, ci) {
+        var cell = ws3.getCell(r, ci + 1);
+        styleCell(cell, isTop ? { bold: true, fill: HEADER_FILL } : (isEven ? { fill: ZEBRA_FILL } : {}));
+        if (ci + 1 === IMAGE_COL) return; // embedded separately via addImage below
+        cell.value = v;
+        var w = displayWidth(v);
+        if (w > colMax[ci]) colMax[ci] = w;
+      });
+      ws3.getRow(r).height = item.image ? 60 : 18;
+      if (item.image) {
+        var imageId = wb.addImage({ base64: "data:image/" + item.image.ext + ";base64," + item.image.base64, extension: item.image.ext });
+        // twoCellAnchor, bounded to exactly fill the cell -- see buildWorkbook's note on
+        // why (fixed-size oneCellAnchor images were found not to hide with a filtered row).
+        ws3.addImage(imageId, { tl: { col: IMAGE_COL - 1, row: r - 1 }, br: { col: IMAGE_COL, row: r } });
+      }
+    });
+
+    colMax.forEach(function (w, i) {
+      ws3.getColumn(i + 1).width = (i + 1 === IMAGE_COL) ? 12 : Math.max(w + 4, 9);
+    });
   }
 
   // Renders §4's stamping-demand result as a second worksheet, styled consistently with
@@ -1110,9 +1273,18 @@
     data.dataRows.forEach(function (values, i) {
       var tr = document.createElement("tr");
       if ((i + 1) % 2 === 0) tr.className = "preview-zebra";
-      values.forEach(function (v) {
+      values.forEach(function (v, ci) {
         var td = document.createElement("td");
-        td.textContent = v === "" ? "" : String(v);
+        if (columns[ci].image) {
+          if (v) {
+            var img = document.createElement("img");
+            img.src = "data:image/" + v.ext + ";base64," + v.base64;
+            img.className = "preview-thumb";
+            td.appendChild(img);
+          }
+        } else {
+          td.textContent = v === "" ? "" : String(v);
+        }
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
@@ -1179,6 +1351,31 @@
     return Promise.resolve({ via: viaFallback ? "browser-fallback" : "browser", status: "saved" });
   }
 
+  // ExcelJS's worksheet.addImage() always emits editAs="oneCell" in the drawing XML, no
+  // matter whether {tl,br} or {tl,ext} was passed to it -- confirmed 2026-09-04 by
+  // inspecting the actual written file's xl/drawings/drawingN.xml. "oneCell" (move but
+  // don't resize with cells) does NOT reliably hide along with its row when Excel's
+  // AutoFilter hides that row (confirmed by the user against a real exported file, twice --
+  // once via {tl,ext}, once via {tl,br}, same result both times); plain "twoCell" (the
+  // OOXML default when editAs is simply omitted -- move AND resize with cells, what a
+  // normally-inserted picture uses) does hide correctly. Since ExcelJS's addImage gives no
+  // way to control this, patch it after the fact: unzip the written .xlsx, strip every
+  // editAs="oneCell" from xl/drawings/drawingN.xml, and re-zip.
+  async function fixImageAnchorEditAs(buffer) {
+    try {
+      var zip = await JSZip.loadAsync(buffer);
+      var names = Object.keys(zip.files).filter(function (n) { return /^xl\/drawings\/drawing\d+\.xml$/.test(n); });
+      if (names.length === 0) return buffer; // no drawings in this workbook, nothing to fix
+      for (var i = 0; i < names.length; i++) {
+        var text = await zip.file(names[i]).async("string");
+        zip.file(names[i], text.replace(/ editAs="oneCell"/g, ""));
+      }
+      return await zip.generateAsync({ type: "arraybuffer" });
+    } catch (e) {
+      return buffer; // best-effort -- if patching fails for any reason, still deliver the original file
+    }
+  }
+
   el.exportBtn.addEventListener("click", function () {
     if (typeof ExcelJS === "undefined") {
       showToast("Excel 匯出元件載入失敗，請檢查網路連線後重新整理再試一次。", true);
@@ -1192,6 +1389,7 @@
     var filename = buildExportFilename();
 
     wb.xlsx.writeBuffer()
+      .then(function (buffer) { return fixImageAnchorEditAs(buffer); })
       .then(function (buffer) { return saveGeneratedFile(filename, buffer); })
       .then(function (result) {
         showToast((result && result.status === "delivered" ? "已送出：" : "已匯出：") + filename);
@@ -1220,13 +1418,133 @@
   // addresses, as long as the header wording itself stays the same.
   var BOM_HEADER_TARGETS = {
     customerPn: ["客戶料號"],
+    esonPn: ["ESON料號"],
     nameZh: ["中文描述"],
     nameEn: ["英文描述"],
     itemNo: ["項次"],
     tonnage: ["機台噸位"],
-    process: ["工程數"]
+    process: ["工程數"],
+    useQty: ["用量"]
   };
   var BOM_HEADER_SCAN_ROWS = 15;
+
+  // Resolves a relative OOXML part target (e.g. "../drawings/drawing1.xml", as found in a
+  // .rels file) against the zip path of the part that OWNS that .rels file, into a full
+  // zip-internal path (e.g. "xl/drawings/drawing1.xml").
+  function resolveZipPath(ownerPartPath, relativeTarget) {
+    var baseDir = ownerPartPath.split("/");
+    baseDir.pop(); // drop the owner part's own filename, keep its directory
+    var segments = relativeTarget.split("/");
+    segments.forEach(function (seg) {
+      if (seg === "..") baseDir.pop();
+      else if (seg !== ".") baseDir.push(seg);
+    });
+    return baseDir.join("/");
+  }
+
+  // Extracts every picture embedded in the FIRST worksheet of an .xlsx file, keyed by the
+  // 0-indexed row it's anchored to (matching aoa's row indexing). .xlsx is a zip of XML
+  // parts; this walks the standard OOXML chain workbook.xml -> first <sheet>'s r:id ->
+  // workbook.xml.rels -> the sheetN.xml path -> that sheet's own .rels -> its <drawing>'s
+  // r:id -> drawingM.xml (the actual anchor positions + blip references) -> drawingM's own
+  // .rels -> the media file paths. Best-effort: returns {} (no images, not an error) if
+  // anything in that chain is missing or fails to parse -- a BOM file with no pictures, or
+  // one JSZip/DOMParser can't fully make sense of, should degrade to "no 簡圖", not break
+  // the upload. Not supported for legacy .xls (different, non-zip binary format) -- see the
+  // format hint in the §3 panel.
+  async function extractXlsxImages(arrayBuffer) {
+    var images = {};
+    try {
+      var zip = await JSZip.loadAsync(arrayBuffer);
+      var parser = new DOMParser();
+
+      var readXmlDoc = async function (path) {
+        var f = zip.file(path);
+        if (!f) return null;
+        var text = await f.async("string");
+        return parser.parseFromString(text, "application/xml");
+      };
+
+      var wbDoc = await readXmlDoc("xl/workbook.xml");
+      if (!wbDoc) return images;
+      var firstSheetEl = wbDoc.getElementsByTagName("sheet")[0];
+      if (!firstSheetEl) return images;
+      var sheetRid = firstSheetEl.getAttribute("r:id");
+      if (!sheetRid) return images;
+
+      var wbRelsDoc = await readXmlDoc("xl/_rels/workbook.xml.rels");
+      if (!wbRelsDoc) return images;
+      var sheetPath = null;
+      var wbRels = wbRelsDoc.getElementsByTagName("Relationship");
+      for (var i = 0; i < wbRels.length; i++) {
+        if (wbRels[i].getAttribute("Id") === sheetRid) {
+          sheetPath = resolveZipPath("xl/workbook.xml", wbRels[i].getAttribute("Target"));
+          break;
+        }
+      }
+      if (!sheetPath) return images;
+
+      var sheetDoc = await readXmlDoc(sheetPath);
+      if (!sheetDoc) return images;
+      var drawingEl = sheetDoc.getElementsByTagName("drawing")[0];
+      if (!drawingEl) return images; // sheet has no pictures at all
+      var drawingRid = drawingEl.getAttribute("r:id");
+      if (!drawingRid) return images;
+
+      var sheetFileName = sheetPath.split("/").pop();
+      var sheetDir = sheetPath.split("/").slice(0, -1).join("/");
+      var sheetRelsDoc = await readXmlDoc(sheetDir + "/_rels/" + sheetFileName + ".rels");
+      if (!sheetRelsDoc) return images;
+      var drawingPath = null;
+      var sheetRels = sheetRelsDoc.getElementsByTagName("Relationship");
+      for (var j = 0; j < sheetRels.length; j++) {
+        if (sheetRels[j].getAttribute("Id") === drawingRid) {
+          drawingPath = resolveZipPath(sheetPath, sheetRels[j].getAttribute("Target"));
+          break;
+        }
+      }
+      if (!drawingPath) return images;
+
+      var drawingDoc = await readXmlDoc(drawingPath);
+      if (!drawingDoc) return images;
+      var drawingFileName = drawingPath.split("/").pop();
+      var drawingDir = drawingPath.split("/").slice(0, -1).join("/");
+      var drawingRelsDoc = await readXmlDoc(drawingDir + "/_rels/" + drawingFileName + ".rels");
+      var mediaByRid = {};
+      if (drawingRelsDoc) {
+        var dRels = drawingRelsDoc.getElementsByTagName("Relationship");
+        for (var k = 0; k < dRels.length; k++) {
+          mediaByRid[dRels[k].getAttribute("Id")] = resolveZipPath(drawingPath, dRels[k].getAttribute("Target"));
+        }
+      }
+
+      var anchors = [];
+      ["xdr:twoCellAnchor", "xdr:oneCellAnchor"].forEach(function (tag) {
+        var els = drawingDoc.getElementsByTagName(tag);
+        for (var a = 0; a < els.length; a++) anchors.push(els[a]);
+      });
+
+      for (var m = 0; m < anchors.length; m++) {
+        var fromEl = anchors[m].getElementsByTagName("xdr:from")[0];
+        var rowEl = fromEl && fromEl.getElementsByTagName("xdr:row")[0];
+        if (!rowEl) continue;
+        var row = parseInt(rowEl.textContent, 10);
+        if (isNaN(row) || images[row]) continue; // first image found for a row wins
+        var blipEl = anchors[m].getElementsByTagName("a:blip")[0];
+        var embedRid = blipEl && blipEl.getAttribute("r:embed");
+        var mediaPath = embedRid && mediaByRid[embedRid];
+        if (!mediaPath) continue;
+        var mediaFile = zip.file(mediaPath);
+        if (!mediaFile) continue;
+        var base64 = await mediaFile.async("base64");
+        var ext = mediaPath.split(".").pop().toLowerCase();
+        images[row] = { base64: base64, ext: ext };
+      }
+    } catch (e) {
+      // best-effort -- fall back to "no images" rather than failing the whole upload
+    }
+    return images;
+  }
 
   // aoa = "array of arrays" from XLSX.utils.sheet_to_json(ws, {header:1}) -- aoa[r][c] is
   // the raw cell value at 0-indexed row r, col c. Using SheetJS (not ExcelJS) to read
@@ -1265,46 +1583,56 @@
     return v == null ? "" : String(v).trim();
   }
 
-  function parseBomRows(aoa, cols, headerRow) {
+  // imagesByRow: optional map of 0-indexed sheet row -> {base64, ext} (from
+  // extractXlsxImages, .xlsx uploads only) -- attaches each part's own 簡圖 to its row.
+  function parseBomRows(aoa, cols, headerRow, imagesByRow) {
     var rows = [];
     for (var r = headerRow + 1; r < aoa.length; r++) {
       var customerPn = bomCellText(aoa, r, cols.customerPn);
+      var esonPn = bomCellText(aoa, r, cols.esonPn);
       var nameZh = bomCellText(aoa, r, cols.nameZh);
       var nameEn = bomCellText(aoa, r, cols.nameEn);
       var itemNo = bomCellText(aoa, r, cols.itemNo);
       var tonnage = bomCellText(aoa, r, cols.tonnage);
       var process = bomCellText(aoa, r, cols.process);
-      if (!customerPn && !nameZh && !nameEn && !itemNo && !tonnage && !process) continue; // fully blank row
-      rows.push({ excelRow: r + 1, itemNo: itemNo, customerPn: customerPn, name: nameZh || nameEn, tonnage: tonnage, process: process });
+      var useQty = bomCellText(aoa, r, cols.useQty);
+      if (!customerPn && !esonPn && !nameZh && !nameEn && !itemNo && !tonnage && !process && !useQty) continue; // fully blank row
+      var image = imagesByRow ? (imagesByRow[r] || null) : null;
+      rows.push({ excelRow: r + 1, itemNo: itemNo, customerPn: customerPn, esonPn: esonPn, name: nameZh || nameEn, tonnage: tonnage, process: process, useQty: useQty, image: image });
     }
     return mergeSplitTonnageRows(rows);
   }
 
-  // Some BOM templates spread one part's 機台噸位/工程數 across two adjacent rows (e.g. a
-  // merged 機台噸位 cell spanning a "清洗" row and the "冲压" row that carries 工程數) --
-  // each row alone looks incomplete and would otherwise be silently skipped. When adjacent
-  // rows share a non-empty 客戶料號 and together hold a complete tonnage+process pair,
-  // merge them into one row (keep the first row's identity, borrow whichever field is
-  // missing from its neighbor) and drop the duplicate -- calculated once, not twice
-  // (2026-09-04 confirmed).
+  // Some BOM templates spread one physical part's data across multiple adjacent rows --
+  // e.g. a "清洗" (cleaning) row that only carries the 簡圖 (its 機台噸位 cell merged down
+  // into the next row) followed by a "冲压" (stamping) row that carries 機台噸位/工程數 but
+  // no picture of its own; or, as originally found, 機台噸位 on one row and 工程數 on the
+  // next. Any of these alone looks incomplete (missing tonnage, missing process, missing
+  // 簡圖) and would otherwise be silently skipped or exported without its picture. Whenever
+  // a run of consecutive rows shares the same non-empty 客戶料號, merge the whole run into
+  // one row -- keep the first row's identity, and for every other field (esonPn, name,
+  // tonnage, process, image) take whichever row in the run actually has it -- so it's
+  // calculated/exported once, with all its data, not split or duplicated (2026-09-04
+  // confirmed; broadened same day after finding the 簡圖-only-row case, which the original
+  // narrower "one has tonnage, the other has process" condition didn't catch).
   function mergeSplitTonnageRows(rows) {
     var merged = [];
-    for (var i = 0; i < rows.length; i++) {
-      var cur = rows[i];
-      var next = rows[i + 1];
-      var complementary = next && cur.customerPn && cur.customerPn === next.customerPn && (
-        (cur.tonnage && !cur.process && !next.tonnage && next.process) ||
-        (!cur.tonnage && cur.process && next.tonnage && !next.process)
-      );
-      if (complementary) {
-        merged.push({
-          excelRow: cur.excelRow, itemNo: cur.itemNo, customerPn: cur.customerPn, name: cur.name,
-          tonnage: cur.tonnage || next.tonnage, process: cur.process || next.process
-        });
-        i++; // consumed next as part of this merge
-      } else {
-        merged.push(cur);
+    var i = 0;
+    while (i < rows.length) {
+      var acc = rows[i];
+      var j = i + 1;
+      while (j < rows.length && acc.customerPn && rows[j].customerPn === acc.customerPn) {
+        var nxt = rows[j];
+        acc = {
+          excelRow: acc.excelRow, itemNo: acc.itemNo, customerPn: acc.customerPn,
+          esonPn: acc.esonPn || nxt.esonPn, name: acc.name || nxt.name,
+          tonnage: acc.tonnage || nxt.tonnage, process: acc.process || nxt.process,
+          useQty: acc.useQty || nxt.useQty, image: acc.image || nxt.image
+        };
+        j++;
       }
+      merged.push(acc);
+      i = j;
     }
     return merged;
   }
@@ -1494,7 +1822,7 @@
     el.bomFileStatus.textContent = "讀取中…";
 
     var reader = new FileReader();
-    reader.onload = function () {
+    reader.onload = async function () {
       try {
         var wb = XLSX.read(reader.result, { type: "array" });
         var sheetName = wb.SheetNames[0];
@@ -1509,7 +1837,11 @@
           el.bomFileStatus.textContent = "找不到「客戶料號」欄位標題，請確認 BOM 格式是否正確。";
           return;
         }
-        var bomRows = parseBomRows(aoa, headerInfo.columns, headerInfo.headerRow);
+        // 簡圖 only for .xlsx (zip+XML); legacy .xls has no practical way to extract this
+        // in-browser -- see the format hint in the panel above.
+        var isXlsx = /\.xlsx$/i.test(file.name) && typeof JSZip !== "undefined";
+        var imagesByRow = isXlsx ? await extractXlsxImages(reader.result) : {};
+        var bomRows = parseBomRows(aoa, headerInfo.columns, headerInfo.headerRow, imagesByRow);
         uploadedBomFiles.push({
           id: Date.now() + "-" + Math.random().toString(36).slice(2),
           name: file.name, sheetName: sheetName, bomRows: bomRows
@@ -1635,10 +1967,13 @@
     return pairs;
   }
 
-  // Counts, per (機台噸位, 工程配置) combo and per 生產地, how many distinct 出貨階
-  // (§2 rows / P/N) use that combo -- §8.5's "先求有再求精" simple-count version, no
-  // capacity/hour weighting yet. A row that references the same combo through more than
-  // one sub-item (or a repeat-count like "3S") still only counts once for that row.
+  // Sums, per (機台噸位, 工程配置) combo and per 生產地, the total stamping quantity
+  // needed -- 2026-09-04 changed from counting distinct 出貨階 to summing every matched
+  // sub-item's own quantity (from parseTonnageProcess: a tonnage line's own "*N", or the
+  // 工程數 token's digit prefix for the older format), since two different physical parts
+  // under the same 出貨階 each add their own real stamping load and shouldn't collapse
+  // into "used, so count 1" for that P/N. Still no capacity/hour weighting (§8.5's
+  // "先求有再求精" scope) -- this is a total quantity, not a machine-count estimate.
   function computeStampingDemand() {
     var rows = state.manualRows;
     var sites = [];
@@ -1656,20 +1991,17 @@
       var group = matchBomForPn(lastBomRows, pn);
       if (!group) return;
       var site = getEffectiveSite(rows, i) || "(未填)";
-      var seenForRow = {};
       group.items.forEach(function (sub) {
         if (classifyMaterial(sub.customerPn, sub.tonnage, sub.process) !== "iron") return;
         if (!sub.tonnage || !sub.process) return;
         var pairs = parseTonnageProcess(sub.tonnage, sub.process);
         pairs.forEach(function (p) {
           var key = p.tonnage + "||" + p.config;
-          if (seenForRow[key]) return;
-          seenForRow[key] = true;
           if (!comboMap[key]) {
             comboMap[key] = { tonnage: p.tonnage, config: p.config, siteCounts: {} };
             comboOrder.push(key);
           }
-          comboMap[key].siteCounts[site] = (comboMap[key].siteCounts[site] || 0) + 1;
+          comboMap[key].siteCounts[site] = (comboMap[key].siteCounts[site] || 0) + p.qty;
         });
       });
     });
