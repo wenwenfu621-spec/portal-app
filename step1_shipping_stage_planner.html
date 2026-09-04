@@ -167,6 +167,17 @@
   .bom-group td.metal-tag.plastic { color: var(--accent-strong); }
   .bom-error { color: var(--danger); font-size: 13px; padding: 8px 2px; }
 
+  .stamping-ref-block { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 4px; }
+  .stamping-ref-head { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  table.ref-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 280px; }
+  table.ref-table th { text-align: left; padding: 6px 10px; color: var(--text-faint); font-weight: 600; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.ref-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.ref-table tr:last-child td { border-bottom: none; }
+  table.demand-table { min-width: 480px; }
+  table.demand-table tr.demand-new-combo td:first-child, table.demand-table tr.demand-new-combo td:nth-child(2) {
+    color: var(--warn-strong); font-weight: 600;
+  }
+
   .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
   table.pn-table { width: 100%; border-collapse: collapse; min-width: 780px; table-layout: auto; }
   /* column order: 1 Item, 2 類型, 3 P/N, 4 Description, 5 Q'Ty, 6 Usage, 7 生產地, 8 delete.
@@ -296,13 +307,40 @@
       <div class="panel-head"><span class="step">§3</span><h2>Step 2（第一階段）：BOM 比對</h2></div>
       <p class="panel-note" style="margin-top:-8px; margin-bottom: 12px;">
         上傳客戶 BOM（.xlsx 或 .xls），用上方 §2 明細表每一列的 P/N 去比對 BOM 的「客戶料號」欄位，
-        找到後展開該筆底下的子項目樹。<strong>目前只做到「比對＋展開＋顯示」，機台噸位/工程數解析與需求統計還沒開始做。</strong>
+        找到後展開該筆底下的子項目樹，標示鐵件/塑膠件。
       </p>
       <div class="field-row" style="align-items:center; gap:10px;">
         <input type="file" id="bomFileInput" accept=".xlsx,.xls">
         <span class="panel-note" id="bomFileStatus" style="margin:0;"></span>
       </div>
       <div id="bomMatchResult" style="margin-top:14px;"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><span class="step">§4</span><h2>Step 2（第二階段）：沖壓機台需求統計</h2></div>
+      <p class="panel-note" style="margin-top:-8px; margin-bottom: 12px;">
+        只取上方 BOM 比對結果裡的<strong>鐵件</strong>料號，把機台噸位（用「&」拆）與工程數（用「+」拆）依順序配對，
+        「S」單獨出現視同「TS」。依（噸位、配置）組合統計被幾個出貨階用到，依生產地分欄。
+        請先在 §3 上傳並比對過 BOM，再按「計算沖壓機台需求」。
+      </p>
+
+      <div class="stamping-ref-block">
+        <div class="stamping-ref-head">機台噸位 × 工程配置 參考表（可自行新增組合）</div>
+        <div class="table-scroll">
+          <table class="ref-table">
+            <thead><tr><th>機台噸位</th><th>工程配置</th><th></th></tr></thead>
+            <tbody id="tonnageRefBody"></tbody>
+          </table>
+        </div>
+        <div class="field-row" style="align-items:center; gap:8px; margin-top:8px;">
+          <input type="text" id="newTonnageInput" placeholder="例如：350T" style="width:110px; flex:none;">
+          <input type="text" id="newConfigInput" placeholder="例如：TS" style="width:90px; flex:none;">
+          <button class="add-row-btn" id="addRefRowBtn" type="button">+ 新增組合</button>
+        </div>
+      </div>
+
+      <button class="add-row-btn" id="calcDemandBtn" type="button" style="margin-top:14px;">計算沖壓機台需求</button>
+      <div id="demandResult" style="margin-top:14px;"></div>
     </section>
 
   </div>
@@ -319,14 +357,31 @@
   var STORAGE_KEY = "shipStagePlanner.v7";
   var TYPE_OPTIONS = ["Chassis", "Tray", "Blade", "Fan Carrier", "Dummy Tray", "Dummy Blank", "Other"];
 
+  var DEFAULT_TONNAGE_REF = [
+    { tonnage: "110T", config: "TS" }, { tonnage: "110T", config: "P" },
+    { tonnage: "160T", config: "TS" }, { tonnage: "160T", config: "P" },
+    { tonnage: "200T", config: "TS" }, { tonnage: "200T", config: "P" },
+    { tonnage: "250T", config: "P" },
+    { tonnage: "300T", config: "P" }, { tonnage: "300T", config: "TS" },
+    { tonnage: "400T", config: "TS" }, { tonnage: "400T", config: "P" },
+    { tonnage: "600T", config: "TS" }, { tonnage: "600T", config: "P" },
+    { tonnage: "800T", config: "P" }
+  ];
+
   var defaultState = {
     projectName: "",
     forecastPerYear: "",
     forecastPerMonth: "",
-    manualRows: []
+    manualRows: [],
+    tonnageRefTable: DEFAULT_TONNAGE_REF.slice()
   };
 
   var state = loadState();
+
+  // BOM rows from the most recent successful upload -- not persisted (the file itself
+  // isn't saved anywhere), just cached in memory so "計算沖壓機台需求" can reuse the
+  // last parsed BOM without requiring a re-upload.
+  var lastBomRows = null;
 
   function loadState() {
     try {
@@ -371,7 +426,13 @@
     toast: document.getElementById("toast"),
     bomFileInput: document.getElementById("bomFileInput"),
     bomFileStatus: document.getElementById("bomFileStatus"),
-    bomMatchResult: document.getElementById("bomMatchResult")
+    bomMatchResult: document.getElementById("bomMatchResult"),
+    tonnageRefBody: document.getElementById("tonnageRefBody"),
+    newTonnageInput: document.getElementById("newTonnageInput"),
+    newConfigInput: document.getElementById("newConfigInput"),
+    addRefRowBtn: document.getElementById("addRefRowBtn"),
+    calcDemandBtn: document.getElementById("calcDemandBtn"),
+    demandResult: document.getElementById("demandResult")
   };
 
   function makeManualRow() { return { type: "", pn: "", desc: "", qty: "", usage: "", usageAuto: true, site: "", siteSameAsAbove: false }; }
@@ -570,6 +631,7 @@
   function renderAll() {
     renderBasicInfo();
     renderStageTable();
+    renderTonnageRefTable();
   }
 
   // ---------- events ----------
@@ -675,12 +737,16 @@
   // Shared by the real .xlsx export and the on-screen preview, so the two can never drift
   // apart -- both just render whatever this returns, one to ExcelJS cells, one to <td>s.
   function computeExportData() {
-    var MAIN_COL_COUNT = 8;
+    // Forecast (Per Year/Month) are repeated-per-row columns, same treatment as
+    // Project Name -- 2026-09-03 confirmed, not a separate info block.
+    var MAIN_COL_COUNT = 10;
     var MONTH_COL_COUNT = 12;
     var monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 
     var columns = [
       { header: "Project Name", width: 16, wrap: true, capWidth: 26 },
+      { header: "Forecast (Per Year)", width: 14, wrap: false },
+      { header: "Forecast (Per Month)", width: 14, wrap: false },
       { header: "Item", width: 8, wrap: false },
       { header: "類型", width: 13, wrap: false },
       { header: "P/N", width: 14, wrap: false },
@@ -693,14 +759,12 @@
 
     var title = (state.projectName || "出貨階規劃器") + " — 出貨階明細表";
 
+    // only 匯出時間 remains an "info row" now (real export only, appended after the
+    // table -- see buildWorkbook); Forecast moved into the columns above.
     var infoRows = [];
-    if (state.forecastPerYear || state.forecastPerMonth) {
-      infoRows.push(["Forecast (Per Year)", String(state.forecastPerYear || "")]);
-      infoRows.push(["Forecast (Per Month)", String(state.forecastPerMonth || "")]);
-    }
 
     var yearNow = new Date().getFullYear();
-    var yearLabel = yearNow + "年(以西元表示)";
+    var yearLabel = yearNow + "年";
 
     var rows = state.manualRows;
     var perMonth = num(state.forecastPerMonth);
@@ -708,6 +772,8 @@
       var monthVal = num(row.usage) * perMonth;
       var values = [
         state.projectName || "",
+        state.forecastPerYear || "",
+        state.forecastPerMonth || "",
         i + 1,
         row.type || "",
         row.pn || "",
@@ -763,23 +829,6 @@
     var titleCell = ws.getCell("A" + nextRow);
     titleCell.value = data.title;
     styleCell(titleCell, null, { bold: true, size: 15, align: LEFT_NOWRAP });
-    nextRow++;
-
-    // the real export additionally stamps the actual export time; the on-screen preview
-    // (computeExportData's own infoRows) deliberately leaves this out, since "now" isn't
-    // meaningful until the user actually exports.
-    var infoRows = data.infoRows.concat([["匯出時間", new Date().toLocaleString("zh-TW")]]);
-
-    infoRows.forEach(function (pair) {
-      var r = nextRow++;
-      ws.mergeCells("B" + r + ":" + lastColLetter + r);
-      var labelCell = ws.getCell("A" + r);
-      labelCell.value = pair[0];
-      styleCell(labelCell, null, { bold: true, align: LEFT_NOWRAP });
-      var valueCell = ws.getCell("B" + r);
-      valueCell.value = pair[1];
-      styleCell(valueCell, null, { align: LEFT_NOWRAP });
-    });
     nextRow++;
 
     // two-row header: Project Name..Usage span both rows; 年分 spans the 12 month columns
@@ -838,6 +887,21 @@
       ws.getColumn(i + 1).width = needed;
     });
 
+    // Forecast (and, for the real export only, 匯出時間) render after the table, not
+    // before it -- 2026-09-03 confirmed.
+    var afterTableRow = headerRow2Index + 1 + data.dataRows.length + 1;
+    var infoRows = data.infoRows.concat([["匯出時間", new Date().toLocaleString("zh-TW")]]);
+    infoRows.forEach(function (pair) {
+      var r = afterTableRow++;
+      ws.mergeCells("B" + r + ":" + lastColLetter + r);
+      var labelCell = ws.getCell("A" + r);
+      labelCell.value = pair[0];
+      styleCell(labelCell, null, { bold: true, align: LEFT_NOWRAP });
+      var valueCell = ws.getCell("B" + r);
+      valueCell.value = pair[1];
+      styleCell(valueCell, null, { align: LEFT_NOWRAP });
+    });
+
     return wb;
   }
 
@@ -867,23 +931,6 @@
     var caption = document.createElement("caption");
     caption.textContent = data.title;
     table.appendChild(caption);
-
-    var infoBody = document.createElement("tbody");
-    data.infoRows.forEach(function (pair) {
-      var tr = document.createElement("tr");
-      tr.className = "preview-info-row";
-      var tdLabel = document.createElement("td");
-      tdLabel.className = "preview-info-label";
-      tdLabel.colSpan = 1;
-      tdLabel.textContent = pair[0];
-      var tdValue = document.createElement("td");
-      tdValue.colSpan = totalCols - 1;
-      tdValue.textContent = pair[1];
-      tr.appendChild(tdLabel);
-      tr.appendChild(tdValue);
-      infoBody.appendChild(tr);
-    });
-    if (data.infoRows.length > 0) table.appendChild(infoBody);
 
     var thead = document.createElement("thead");
     var headRow1 = document.createElement("tr");
@@ -920,6 +967,25 @@
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
+
+    if (data.infoRows.length > 0) {
+      var infoBody = document.createElement("tbody");
+      data.infoRows.forEach(function (pair) {
+        var infoTr = document.createElement("tr");
+        infoTr.className = "preview-info-row";
+        var tdLabel = document.createElement("td");
+        tdLabel.className = "preview-info-label";
+        tdLabel.colSpan = 1;
+        tdLabel.textContent = pair[0];
+        var tdValue = document.createElement("td");
+        tdValue.colSpan = totalCols - 1;
+        tdValue.textContent = pair[1];
+        infoTr.appendChild(tdLabel);
+        infoTr.appendChild(tdValue);
+        infoBody.appendChild(infoTr);
+      });
+      table.appendChild(infoBody);
+    }
 
     el.excelPreviewWrap.innerHTML = "";
     el.excelPreviewWrap.appendChild(table);
@@ -1178,6 +1244,7 @@
         var bomRows = parseBomRows(aoa, headerInfo.columns, headerInfo.headerRow);
         el.bomFileStatus.textContent = "已讀取「" + file.name + "」（工作表：" + sheetName + "），共 " + bomRows.length + " 筆料號列。";
         renderBomMatchResult(bomRows);
+        lastBomRows = bomRows;
       } catch (err) {
         el.bomFileStatus.textContent = "解析失敗：" + (err && err.message ? err.message : "未知錯誤");
       }
@@ -1186,6 +1253,195 @@
       el.bomFileStatus.textContent = "檔案讀取失敗。";
     };
     reader.readAsArrayBuffer(file);
+  });
+
+  // ---------- Step 2 (stage 2): tonnage/process parsing, reference table, demand counts ----------
+
+  function renderTonnageRefTable() {
+    var body = el.tonnageRefBody;
+    body.innerHTML = "";
+    state.tonnageRefTable.forEach(function (entry, i) {
+      var tr = document.createElement("tr");
+      var tdT = document.createElement("td"); tdT.textContent = entry.tonnage; tr.appendChild(tdT);
+      var tdC = document.createElement("td"); tdC.textContent = entry.config; tr.appendChild(tdC);
+      var tdDel = document.createElement("td");
+      tdDel.style.textAlign = "center";
+      var delBtn = document.createElement("button");
+      delBtn.className = "row-del"; delBtn.type = "button"; delBtn.textContent = "✕";
+      delBtn.title = "刪除此組合";
+      delBtn.addEventListener("click", function () {
+        state.tonnageRefTable.splice(i, 1);
+        saveState();
+        renderTonnageRefTable();
+      });
+      tdDel.appendChild(delBtn);
+      tr.appendChild(tdDel);
+      body.appendChild(tr);
+    });
+  }
+
+  el.addRefRowBtn.addEventListener("click", function () {
+    var tonnage = el.newTonnageInput.value.trim();
+    var config = el.newConfigInput.value.trim();
+    if (!tonnage || !config) {
+      showToast("請輸入機台噸位與工程配置", true);
+      return;
+    }
+    var exists = state.tonnageRefTable.some(function (e) { return e.tonnage === tonnage && e.config === config; });
+    if (exists) {
+      showToast("這個組合已經在參考表中了", true);
+      return;
+    }
+    state.tonnageRefTable.push({ tonnage: tonnage, config: config });
+    saveState();
+    el.newTonnageInput.value = "";
+    el.newConfigInput.value = "";
+    renderTonnageRefTable();
+  });
+
+  // Splits the BOM「機台噸位」/「工程數」compound values and pairs them positionally
+  // (§8.3): 機台噸位 by "&", 工程數 by "+", Nth tonnage pairs with Nth process code.
+  // A leading digit on a process token (e.g. "3S") is a repeat count, not part of the
+  // config code itself. A bare "S" with NO digit prefix is shorthand for "TS" (2026-09-03
+  // confirmed) -- "3S" stays as config "S" with qty 3, it is NOT normalized to "TS".
+  function parseTonnageProcess(tonnageStr, processStr) {
+    var tonnages = String(tonnageStr || "").split("&").map(function (s) { return s.trim(); }).filter(Boolean);
+    var processes = String(processStr || "").split("+").map(function (s) { return s.trim(); }).filter(Boolean);
+    var pairs = [];
+    var n = Math.min(tonnages.length, processes.length);
+    for (var i = 0; i < n; i++) {
+      var raw = processes[i];
+      var m = raw.match(/^(\d+)(.*)$/);
+      var qty = 1, config = raw;
+      if (m) {
+        qty = parseInt(m[1], 10) || 1;
+        config = m[2].trim();
+      } else if (raw === "S") {
+        config = "TS";
+      }
+      if (tonnages[i] && config) pairs.push({ tonnage: tonnages[i], config: config, qty: qty });
+    }
+    return pairs;
+  }
+
+  // Counts, per (機台噸位, 工程配置) combo and per 生產地, how many distinct 出貨階
+  // (§2 rows / P/N) use that combo -- §8.5's "先求有再求精" simple-count version, no
+  // capacity/hour weighting yet. A row that references the same combo through more than
+  // one sub-item (or a repeat-count like "3S") still only counts once for that row.
+  function computeStampingDemand() {
+    var rows = state.manualRows;
+    var sites = [];
+    rows.forEach(function (row, i) {
+      var site = getEffectiveSite(rows, i) || "(未填)";
+      if (sites.indexOf(site) === -1) sites.push(site);
+    });
+
+    var comboMap = {};
+    var comboOrder = [];
+
+    rows.forEach(function (row, i) {
+      var pn = (row.pn || "").trim();
+      if (!pn) return;
+      var group = matchBomForPn(lastBomRows, pn);
+      if (!group) return;
+      var site = getEffectiveSite(rows, i) || "(未填)";
+      var seenForRow = {};
+      group.forEach(function (sub) {
+        if (classifyMaterial(sub.customerPn) !== "iron") return;
+        if (!sub.tonnage || !sub.process) return;
+        var pairs = parseTonnageProcess(sub.tonnage, sub.process);
+        pairs.forEach(function (p) {
+          var key = p.tonnage + "||" + p.config;
+          if (seenForRow[key]) return;
+          seenForRow[key] = true;
+          if (!comboMap[key]) {
+            comboMap[key] = { tonnage: p.tonnage, config: p.config, siteCounts: {} };
+            comboOrder.push(key);
+          }
+          comboMap[key].siteCounts[site] = (comboMap[key].siteCounts[site] || 0) + 1;
+        });
+      });
+    });
+
+    var refKeys = {};
+    var refCombos = state.tonnageRefTable.map(function (r) {
+      var key = r.tonnage + "||" + r.config;
+      refKeys[key] = true;
+      return { key: key, tonnage: r.tonnage, config: r.config, inRef: true };
+    });
+    var newCombos = comboOrder
+      .filter(function (k) { return !refKeys[k]; })
+      .map(function (k) { return { key: k, tonnage: comboMap[k].tonnage, config: comboMap[k].config, inRef: false }; });
+
+    var tableRows = refCombos.concat(newCombos).map(function (c) {
+      var counts = {};
+      sites.forEach(function (site) {
+        counts[site] = (comboMap[c.key] && comboMap[c.key].siteCounts[site]) || 0;
+      });
+      return { tonnage: c.tonnage, config: c.config, inRef: c.inRef, counts: counts };
+    });
+
+    return { sites: sites, rows: tableRows };
+  }
+
+  function renderDemandResult(data) {
+    el.demandResult.innerHTML = "";
+
+    if (data.rows.length === 0) {
+      el.demandResult.innerHTML = '<p class="table-empty-msg">沒有任何鐵件料號比對到機台噸位／工程數資訊，無法統計。</p>';
+      return;
+    }
+
+    var wrap = document.createElement("div");
+    wrap.className = "table-scroll";
+    var table = document.createElement("table");
+    table.className = "demand-table";
+
+    var thead = document.createElement("thead");
+    var headTr = document.createElement("tr");
+    ["機台噸位", "工程配置"].forEach(function (h) {
+      var th = document.createElement("th"); th.textContent = h; headTr.appendChild(th);
+    });
+    data.sites.forEach(function (site) {
+      var th = document.createElement("th"); th.textContent = site + " 需求數"; headTr.appendChild(th);
+    });
+    thead.appendChild(headTr);
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    data.rows.forEach(function (row) {
+      var tr = document.createElement("tr");
+      if (!row.inRef) tr.className = "demand-new-combo";
+      var tdT = document.createElement("td"); tdT.textContent = row.tonnage; tr.appendChild(tdT);
+      var tdC = document.createElement("td"); tdC.textContent = row.config; tr.appendChild(tdC);
+      data.sites.forEach(function (site) {
+        var td = document.createElement("td"); td.textContent = row.counts[site]; tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    el.demandResult.appendChild(wrap);
+
+    if (data.rows.some(function (r) { return !r.inRef; })) {
+      var note = document.createElement("p");
+      note.className = "panel-note";
+      note.style.marginTop = "8px";
+      note.textContent = "橘色列是參考表裡沒有的新組合（比對到但表中沒有），可到上方參考表輸入相同的機台噸位／工程配置手動新增。";
+      el.demandResult.appendChild(note);
+    }
+  }
+
+  el.calcDemandBtn.addEventListener("click", function () {
+    if (!lastBomRows) {
+      el.demandResult.innerHTML = '<p class="bom-error">請先在上方 §3 上傳並比對過 BOM，再計算沖壓機台需求。</p>';
+      return;
+    }
+    if (state.manualRows.length === 0) {
+      el.demandResult.innerHTML = '<p class="bom-error">§2 明細表目前沒有任何出貨階，無法統計。</p>';
+      return;
+    }
+    renderDemandResult(computeStampingDemand());
   });
 
   renderAll();
