@@ -399,6 +399,35 @@
       <div id="demandResult" style="margin-top:14px;"></div>
     </section>
 
+    <section class="panel">
+      <div class="panel-head"><span class="step">§5</span><h2>Step 2（第三階段）：塑膠機台需求統計</h2></div>
+      <p class="panel-note" style="margin-top:-8px; margin-bottom: 12px;">
+        只取上方 BOM 比對結果裡的<strong>塑膠件</strong>料號的機台噸位（沒有工程配置這個維度），
+        加總每個噸位被出貨階用到的用量，依生產地分欄。請先在 §3 上傳並比對過 BOM，再按「計算塑膠機台需求」。
+      </p>
+
+      <div class="stamping-ref-block">
+        <button class="stamping-ref-toggle" id="plasticRefToggle" type="button" aria-expanded="false">
+          <span class="toggle-arrow">▸</span> 塑膠機台噸位參考表（可自行新增噸位）
+        </button>
+        <div class="stamping-ref-body" id="plasticRefBodyWrap" style="display:none;">
+          <div class="table-scroll">
+            <table class="ref-table">
+              <thead><tr><th>機台噸位</th><th></th></tr></thead>
+              <tbody id="plasticRefBody"></tbody>
+            </table>
+          </div>
+          <div class="field-row" style="align-items:center; gap:8px; margin-top:8px;">
+            <input type="text" id="newPlasticTonnageInput" placeholder="例如：350T" style="width:110px; flex:none;">
+            <button class="add-row-btn" id="addPlasticRefRowBtn" type="button">+ 新增噸位</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="add-row-btn" id="calcPlasticDemandBtn" type="button" style="margin-top:14px;">計算塑膠機台需求</button>
+      <div id="plasticDemandResult" style="margin-top:14px;"></div>
+    </section>
+
   </div>
 </div>
 
@@ -425,12 +454,17 @@
     { tonnage: "800T", config: "P" }
   ];
 
+  // Plastic (injection-molding) machines have no 工程配置 dimension -- just a flat list of
+  // valid tonnages (2026-09-04 confirmed).
+  var DEFAULT_PLASTIC_TONNAGE_REF = ["100T", "160T", "200T", "300T", "600T", "800T", "1300T"];
+
   var defaultState = {
     projectName: "",
     forecastPerYear: "",
     forecastPerMonth: "",
     manualRows: [],
-    tonnageRefTable: DEFAULT_TONNAGE_REF.slice()
+    tonnageRefTable: DEFAULT_TONNAGE_REF.slice(),
+    plasticTonnageRefTable: DEFAULT_PLASTIC_TONNAGE_REF.slice()
   };
 
   var state = loadState();
@@ -450,6 +484,9 @@
   // was last calculated (same convention as the Excel preview: it doesn't auto-refresh on
   // every keystroke, the user re-runs the button when they want fresh numbers).
   var lastDemandData = null;
+
+  // Same convention as lastDemandData, for "計算塑膠機台需求".
+  var lastPlasticDemandData = null;
 
   function loadState() {
     try {
@@ -504,7 +541,14 @@
     newConfigInput: document.getElementById("newConfigInput"),
     addRefRowBtn: document.getElementById("addRefRowBtn"),
     calcDemandBtn: document.getElementById("calcDemandBtn"),
-    demandResult: document.getElementById("demandResult")
+    demandResult: document.getElementById("demandResult"),
+    plasticRefBody: document.getElementById("plasticRefBody"),
+    plasticRefToggle: document.getElementById("plasticRefToggle"),
+    plasticRefBodyWrap: document.getElementById("plasticRefBodyWrap"),
+    newPlasticTonnageInput: document.getElementById("newPlasticTonnageInput"),
+    addPlasticRefRowBtn: document.getElementById("addPlasticRefRowBtn"),
+    calcPlasticDemandBtn: document.getElementById("calcPlasticDemandBtn"),
+    plasticDemandResult: document.getElementById("plasticDemandResult")
   };
 
   function makeManualRow() { return { type: "", pn: "", desc: "", qty: "", usage: "", usageAuto: true, site: "", siteSameAsAbove: false }; }
@@ -704,6 +748,7 @@
     renderBasicInfo();
     renderStageTable();
     renderTonnageRefTable();
+    renderPlasticRefTable();
   }
 
   // ---------- events ----------
@@ -1047,7 +1092,59 @@
       addBomOverviewSheet(wb, fontName, overviewItems);
     }
 
+    // Same convention as the stamping-demand sheet: only attached if §5's "計算塑膠機台
+    // 需求" has been run.
+    if (lastPlasticDemandData) {
+      addPlasticDemandSheet(wb, fontName, lastPlasticDemandData);
+    }
+
     return wb;
+  }
+
+  // Renders §5's plastic-demand result as a worksheet, styled identically to
+  // addDemandSheet but with no 工程配置 column (plastic machines have no config dimension).
+  function addPlasticDemandSheet(wb, fontName, demandData) {
+    var ws4 = wb.addWorksheet("塑膠機台需求統計");
+    var CENTER_NOWRAP = { horizontal: "center", vertical: "middle", wrapText: false };
+    var THIN = { style: "thin", color: { argb: "FFB9C3CC" } };
+    var BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+    var HEADER_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCEEEC" } };
+    var ZEBRA_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F4F6" } };
+    var NEW_COMBO_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFBEDDB" } };
+
+    function styleCell(cell, opts) {
+      opts = opts || {};
+      cell.font = { name: fontName, size: opts.size || 11, bold: !!opts.bold };
+      cell.alignment = CENTER_NOWRAP;
+      cell.border = BORDER;
+      if (opts.fill) cell.fill = opts.fill;
+    }
+
+    var headers = ["機台噸位"].concat(demandData.sites.map(function (s) { return s + " 需求數"; }));
+    var colMax = headers.map(function (h) { return displayWidth(h); });
+
+    headers.forEach(function (h, i) {
+      var cell = ws4.getCell(1, i + 1);
+      cell.value = h;
+      styleCell(cell, { bold: true, fill: HEADER_FILL });
+    });
+
+    demandData.rows.forEach(function (row, ri) {
+      var r = ri + 2;
+      var isEven = (ri + 1) % 2 === 0;
+      var fill = row.inRef ? (isEven ? ZEBRA_FILL : null) : NEW_COMBO_FILL;
+      var values = [row.tonnage].concat(demandData.sites.map(function (s) { return row.counts[s]; }));
+      values.forEach(function (v, ci) {
+        var cell = ws4.getCell(r, ci + 1);
+        cell.value = v;
+        styleCell(cell, { fill: fill });
+        if (ci >= 1) cell.numFmt = "0";
+        var w = displayWidth(v);
+        if (w > colMax[ci]) colMax[ci] = w;
+      });
+    });
+
+    colMax.forEach(function (w, i) { ws4.getColumn(i + 1).width = Math.max(w + 4, 9); });
   }
 
   // One 階層-1 row per matched §2 出貨階 (itemSeq = that row's own Item number, i.e. its
@@ -1906,6 +2003,178 @@
     el.newTonnageInput.value = "";
     el.newConfigInput.value = "";
     renderTonnageRefTable();
+  });
+
+  // ---------- Step 2 (stage 3): plastic (injection-molding) tonnage reference + demand ----------
+
+  el.plasticRefToggle.addEventListener("click", function () {
+    var expanded = el.plasticRefToggle.getAttribute("aria-expanded") === "true";
+    el.plasticRefToggle.setAttribute("aria-expanded", String(!expanded));
+    el.plasticRefBodyWrap.style.display = expanded ? "none" : "block";
+  });
+
+  function renderPlasticRefTable() {
+    var body = el.plasticRefBody;
+    body.innerHTML = "";
+    state.plasticTonnageRefTable.forEach(function (tonnage, i) {
+      var tr = document.createElement("tr");
+      var tdT = document.createElement("td"); tdT.textContent = tonnage; tr.appendChild(tdT);
+      var tdDel = document.createElement("td");
+      tdDel.style.textAlign = "center";
+      var delBtn = document.createElement("button");
+      delBtn.className = "row-del"; delBtn.type = "button"; delBtn.textContent = "✕";
+      delBtn.title = "刪除此噸位";
+      delBtn.addEventListener("click", function () {
+        state.plasticTonnageRefTable.splice(i, 1);
+        saveState();
+        renderPlasticRefTable();
+      });
+      tdDel.appendChild(delBtn);
+      tr.appendChild(tdDel);
+      body.appendChild(tr);
+    });
+  }
+
+  el.addPlasticRefRowBtn.addEventListener("click", function () {
+    var tonnage = el.newPlasticTonnageInput.value.trim();
+    if (!tonnage) {
+      showToast("請輸入機台噸位", true);
+      return;
+    }
+    if (state.plasticTonnageRefTable.indexOf(tonnage) !== -1) {
+      showToast("這個噸位已經在參考表中了", true);
+      return;
+    }
+    state.plasticTonnageRefTable.push(tonnage);
+    saveState();
+    el.newPlasticTonnageInput.value = "";
+    renderPlasticRefTable();
+  });
+
+  // Splits a plastic part's 機台噸位 value into (tonnage, qty) entries -- same tokenizing
+  // as the iron side (newline and/or "&"-separated, optional own "*N" quantity suffix) but
+  // with no 工程數/config dimension at all (2026-09-04 confirmed plastic machines have none).
+  // A token with no "*N" suffix defaults to qty 1.
+  function parseTonnageOnly(tonnageStr) {
+    tonnageStr = String(tonnageStr || "");
+    if (!tonnageStr.trim()) return [];
+    return tonnageStr.split(/\r?\n/).reduce(function (acc, line) {
+      return acc.concat(line.split("&"));
+    }, []).map(function (s) { return s.trim(); }).filter(Boolean).map(function (t) {
+      var m = t.match(/^(.+?)\*(\d+)$/);
+      return m ? { tonnage: m[1].trim(), qty: parseInt(m[2], 10) || 1 } : { tonnage: t, qty: 1 };
+    });
+  }
+
+  // Sums, per 機台噸位 and per 生產地, the total usage across every matched 塑膠件 (EBF-
+  // classified) part -- same "加總不是筆數" convention as computeStampingDemand.
+  function computePlasticDemand() {
+    var rows = state.manualRows;
+    var sites = [];
+    rows.forEach(function (row, i) {
+      var site = getEffectiveSite(rows, i) || "(未填)";
+      if (sites.indexOf(site) === -1) sites.push(site);
+    });
+
+    var tonnageMap = {};
+    var tonnageOrder = [];
+
+    rows.forEach(function (row, i) {
+      var pn = (row.pn || "").trim();
+      if (!pn) return;
+      var group = matchBomForPn(lastBomRows, pn);
+      if (!group) return;
+      var site = getEffectiveSite(rows, i) || "(未填)";
+      group.items.forEach(function (sub) {
+        if (classifyMaterial(sub.customerPn, sub.tonnage, sub.process) !== "plastic") return;
+        if (!sub.tonnage) return;
+        var entries = parseTonnageOnly(sub.tonnage);
+        entries.forEach(function (e) {
+          if (!e.tonnage) return;
+          if (!tonnageMap[e.tonnage]) {
+            tonnageMap[e.tonnage] = { tonnage: e.tonnage, siteCounts: {} };
+            tonnageOrder.push(e.tonnage);
+          }
+          tonnageMap[e.tonnage].siteCounts[site] = (tonnageMap[e.tonnage].siteCounts[site] || 0) + e.qty;
+        });
+      });
+    });
+
+    var refSet = {};
+    var refRows = state.plasticTonnageRefTable.map(function (t) { refSet[t] = true; return { tonnage: t, inRef: true }; });
+    var newRows = tonnageOrder
+      .filter(function (t) { return !refSet[t]; })
+      .map(function (t) { return { tonnage: t, inRef: false }; });
+
+    var tableRows = refRows.concat(newRows).map(function (r) {
+      var counts = {};
+      sites.forEach(function (site) {
+        counts[site] = (tonnageMap[r.tonnage] && tonnageMap[r.tonnage].siteCounts[site]) || 0;
+      });
+      return { tonnage: r.tonnage, inRef: r.inRef, counts: counts };
+    });
+
+    return { sites: sites, rows: tableRows };
+  }
+
+  function renderPlasticDemandResult(data) {
+    el.plasticDemandResult.innerHTML = "";
+
+    if (data.rows.length === 0) {
+      el.plasticDemandResult.innerHTML = '<p class="table-empty-msg">沒有任何塑膠件料號比對到機台噸位資訊，無法統計。</p>';
+      return;
+    }
+
+    var wrap = document.createElement("div");
+    wrap.className = "table-scroll";
+    var table = document.createElement("table");
+    table.className = "demand-table";
+
+    var thead = document.createElement("thead");
+    var headTr = document.createElement("tr");
+    ["機台噸位"].forEach(function (h) {
+      var th = document.createElement("th"); th.textContent = h; headTr.appendChild(th);
+    });
+    data.sites.forEach(function (site) {
+      var th = document.createElement("th"); th.textContent = site + " 需求數"; headTr.appendChild(th);
+    });
+    thead.appendChild(headTr);
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    data.rows.forEach(function (row) {
+      var tr = document.createElement("tr");
+      if (!row.inRef) tr.className = "demand-new-combo";
+      var tdT = document.createElement("td"); tdT.textContent = row.tonnage; tr.appendChild(tdT);
+      data.sites.forEach(function (site) {
+        var td = document.createElement("td"); td.textContent = row.counts[site]; tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    el.plasticDemandResult.appendChild(wrap);
+
+    if (data.rows.some(function (r) { return !r.inRef; })) {
+      var note = document.createElement("p");
+      note.className = "panel-note";
+      note.style.marginTop = "8px";
+      note.textContent = "橘色列是參考表裡沒有的新噸位（比對到但表中沒有），可到上方參考表輸入相同的機台噸位手動新增。";
+      el.plasticDemandResult.appendChild(note);
+    }
+  }
+
+  el.calcPlasticDemandBtn.addEventListener("click", function () {
+    if (!lastBomRows || lastBomRows.length === 0) {
+      el.plasticDemandResult.innerHTML = '<p class="bom-error">請先在上方 §3 上傳並比對過 BOM，再計算塑膠機台需求。</p>';
+      return;
+    }
+    if (state.manualRows.length === 0) {
+      el.plasticDemandResult.innerHTML = '<p class="bom-error">§2 明細表目前沒有任何出貨階，無法統計。</p>';
+      return;
+    }
+    lastPlasticDemandData = computePlasticDemand();
+    renderPlasticDemandResult(lastPlasticDemandData);
   });
 
   // Splits the BOM「機台噸位」/「工程數」compound values into (tonnage, config, qty)
