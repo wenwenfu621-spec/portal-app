@@ -96,6 +96,7 @@ from datetime import date, timedelta
 import streamlit as st
 from dotenv import load_dotenv
 
+from app_secrets import get_secret
 import business_rules
 import config
 import docx_generator
@@ -192,15 +193,9 @@ finally:
 if _sop:
     st.download_button("📄 查看操作SOP", data=_sop["content"], file_name=_sop["filename"])
 
-try:
-    _secrets_api_key = st.secrets.get("GEMINI_API_KEY", "")
-except Exception:
-    # 本機獨立測試進入點沒有設定 .streamlit/secrets.toml 時，st.secrets 會直接拋例外
-    # （不是回傳空字串），要接住，不然這支頁面在沒設定 secrets 的環境會直接掛掉。
-    _secrets_api_key = ""
-# 優先讀 st.secrets（跟私車公用報支一致，Streamlit Cloud 網頁上設定的 Secrets 主要
-# 會進到這裡），環境變數當備援（例如用 .env + python-dotenv 的本機開發方式）。
-api_key = _secrets_api_key or os.environ.get("GEMINI_API_KEY", "")
+# 優先讀 st.secrets（Streamlit Cloud／本機），讀不到時退回環境變數（Cloud Run，或用
+# .env + python-dotenv 的本機開發方式）——跟私車公用報支共用同一個 app_secrets.get_secret()。
+api_key = get_secret("GEMINI_API_KEY")
 if not api_key:
     st.error("伺服器尚未設定 GEMINI_API_KEY，收據辨識功能無法使用，請聯絡工具管理員。")
 

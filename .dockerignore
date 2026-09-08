@@ -1,0 +1,12 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+.venv/
+*.db
+.env
+.env.txt
+.streamlit/secrets.toml
+.claude/
+docs/
+project_spec.md

@@ -10,6 +10,8 @@ import pandas as pd
 import requests
 import streamlit as st
 
+from app_secrets import get_secret_dict
+
 _FORM_RESPONSE_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeWI7dFxqjMeX9H0KxbSYVETuBiTOLEqZs43T06yKdbQofNAQ/formResponse"
 _ENTRY_NAME = "entry.505350995"
 _ENTRY_DEPT = "entry.1840094204"
@@ -106,7 +108,7 @@ def load_usage_log() -> pd.DataFrame:
     try:
         import gspread
 
-        gc = gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
+        gc = gspread.service_account_from_dict(get_secret_dict("gcp_service_account"))
         sh = gc.open_by_key(_SPREADSHEET_ID)
         ws = sh.get_worksheet_by_id(_WORKSHEET_GID)
         records = ws.get_all_records()

@@ -28,6 +28,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 import database
+from app_secrets import get_secret
 from identity_watermark import get_git_version
 from portal_theme import inject_glass_theme
 from usage_log import log_page_open, log_usage
@@ -430,12 +431,8 @@ st.markdown(
     "上傳停車/加油發票或 **PDF 檔**，由 Gemini AI 自動辨識日期與金額，輕鬆生成報銷單！"
 )
 
-# 2. API Key 設定 (從 Streamlit Secrets 讀取)
-KEY_PART1 = "AQ.Ab8RN6JNdZJgY7a7BDK67Cx"
-KEY_PART2 = "W44rm-vd-bHVwIkaCS84ZPG9yww"
-DEFAULT_API_KEY = KEY_PART1 + KEY_PART2
-
-api_key = st.secrets.get("GEMINI_API_KEY", DEFAULT_API_KEY)
+# 2. API Key 設定（Streamlit Cloud／本機讀 st.secrets，Cloud Run 讀環境變數，見 app_secrets.py）
+api_key = get_secret("GEMINI_API_KEY")
 
 if not api_key:
     st.error("\u26A0\uFE0F 未偵測到有效的 API Key，請確認 Streamlit Secrets 設定。")

@@ -59,8 +59,10 @@ def get_git_version(app_dir: str | None = None) -> str:
     版本字串常數——每次程式碼異動、重新部署完成後這裡自動反映實際版本，不再需要（也
     不可能）手動同步。app_dir 預設用呼叫端檔案所在目錄；Git 會自動往上層找 .git
     目錄，所以就算 app_dir 是子目錄（例如多頁應用程式的 pages/ 底下）也能正確運作。
-    讀不到（例如執行環境沒有 git 指令、或不是 git checkout）就回傳 "unknown"，這只是
-    裝飾性的顯示標籤，讀取失敗不該影響主要功能。"""
+    讀不到（例如執行環境沒有 git 指令、或不是 git checkout）就退回讀環境變數
+    APP_VERSION——Cloud Run 的容器映像通常不會把 .git 資料夾一起打包進去，
+    Dockerfile 建置時可以把 Cloud Build 提供的 commit SHA 寫進這個環境變數。
+    兩邊都讀不到就回傳 "unknown"，這只是裝飾性的顯示標籤，讀取失敗不該影響主要功能。"""
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -71,7 +73,7 @@ def get_git_version(app_dir: str | None = None) -> str:
             return result.stdout.strip()
     except Exception:
         pass
-    return "unknown"
+    return os.environ.get("APP_VERSION", "unknown")
 
 
 def inject_version_tag(app_version: str) -> None:
