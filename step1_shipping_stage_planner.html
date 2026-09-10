@@ -214,6 +214,7 @@
   table.demand-table tr.demand-new-combo td:first-child, table.demand-table tr.demand-new-combo td:nth-child(2) {
     color: var(--warn-strong); font-weight: 600;
   }
+  table.demand-table tfoot td { font-weight: 700; border-top: 2px solid var(--border-strong); background: var(--surface-2); }
 
   .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
   table.pn-table { width: 100%; border-collapse: collapse; min-width: 780px; table-layout: auto; }
@@ -1269,7 +1270,12 @@
     });
 
     colMax.forEach(function (w, i) {
-      ws3.getColumn(i + 1).width = (i + 1 === IMAGE_COL) ? 12 : Math.max(w + 4, 9);
+      // +6 padding, not +4 -- this sheet's font (微軟正黑體) renders noticeably wider than
+      // the default font Excel's column-width unit is calibrated against, so adjacent
+      // narrow columns (e.g. P/N next to ESON P/N) looked visually fused together with the
+      // old padding even though each cell's own value was already complete (2026-09-10
+      // confirmed against a real export).
+      ws3.getColumn(i + 1).width = (i + 1 === IMAGE_COL) ? 12 : Math.max(w + 6, 10);
     });
   }
 
@@ -2222,6 +2228,17 @@
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
+
+    var tfoot = document.createElement("tfoot");
+    var totalTr = document.createElement("tr");
+    var tdLabel = document.createElement("td"); tdLabel.textContent = "總計"; totalTr.appendChild(tdLabel);
+    data.sites.forEach(function (site) {
+      var total = data.rows.reduce(function (sum, row) { return sum + (row.counts[site] || 0); }, 0);
+      var td = document.createElement("td"); td.textContent = total; totalTr.appendChild(td);
+    });
+    tfoot.appendChild(totalTr);
+    table.appendChild(tfoot);
+
     wrap.appendChild(table);
     el.plasticDemandResult.appendChild(wrap);
 
@@ -2405,6 +2422,17 @@
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
+
+    var tfoot = document.createElement("tfoot");
+    var totalTr = document.createElement("tr");
+    var tdLabel = document.createElement("td"); tdLabel.textContent = "總計"; tdLabel.colSpan = 2; totalTr.appendChild(tdLabel);
+    data.sites.forEach(function (site) {
+      var total = data.rows.reduce(function (sum, row) { return sum + (row.counts[site] || 0); }, 0);
+      var td = document.createElement("td"); td.textContent = total; totalTr.appendChild(td);
+    });
+    tfoot.appendChild(totalTr);
+    table.appendChild(tfoot);
+
     wrap.appendChild(table);
     el.demandResult.appendChild(wrap);
 
