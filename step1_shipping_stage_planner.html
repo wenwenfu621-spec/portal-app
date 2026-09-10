@@ -251,6 +251,14 @@
   table.pn-table td.usage-cell input.auto-filled { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); font-weight: 600; }
   table.pn-table td.usage-cell input:disabled { cursor: not-allowed; opacity: 0.9; }
   table.pn-table td.del-cell { width: 34px; text-align: center; }
+  /* Sticks the delete column to the right edge of .table-scroll's own horizontal scroll --
+     with this many columns the table often overflows a narrower viewport (e.g. the
+     portal-app iframe embed), and the ✕ button used to scroll off-screen with the rest of
+     生產地, making a mis-added row look impossible to delete (2026-09-10 confirmed). */
+  table.pn-table th:last-child, table.pn-table td.del-cell {
+    position: sticky; right: 0; background: var(--surface); border-left: 1px solid var(--border);
+  }
+  table.pn-table th:last-child { background: var(--surface-2); }
   .row-del { background: transparent; border: none; color: var(--text-faint); font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 5px; }
   .row-del:hover { color: var(--danger); background: var(--danger-soft); }
   .add-row-btn {
@@ -629,6 +637,9 @@
         input.addEventListener("input", function () {
           row[f[0]] = input.value;
           saveState();
+          // Re-run §3's match against the new P/N without renderAll()'s full re-render --
+          // that would rebuild every row's <input> and drop focus mid-keystroke.
+          if (f[0] === "pn") renderBomMatchResult(lastBomRows);
         });
         td.appendChild(input);
         tr.appendChild(td);
@@ -750,6 +761,7 @@
     renderStageTable();
     renderTonnageRefTable();
     renderPlasticRefTable();
+    renderBomMatchResult(lastBomRows); // §2 row add/remove shifts Item numbers, so §3 needs a refresh too
   }
 
   // ---------- events ----------
@@ -823,7 +835,6 @@
     el.bomFileInput.value = "";
     el.bomFileStatus.textContent = "";
     el.bomFileList.innerHTML = "";
-    el.bomMatchResult.innerHTML = "";
     el.demandResult.innerHTML = "";
     el.plasticDemandResult.innerHTML = "";
 
