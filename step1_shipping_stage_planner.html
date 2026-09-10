@@ -1787,7 +1787,24 @@
       var image = imagesByRow ? (imagesByRow[r] || null) : null;
       rows.push({ excelRow: r + 1, sheetName: sheetName, itemNo: itemNo, customerPn: customerPn, esonPn: esonPn, name: nameZh || nameEn, tonnage: tonnage, process: process, useQty: useQty, image: image });
     }
-    return mergeSplitTonnageRows(rows);
+    return inheritImageFromSummaryRowAbove(mergeSplitTonnageRows(rows));
+  }
+
+  // Some BOM templates put a part's picture on an "assembly summary" row (blank 客戶料號,
+  // but its own name/ESON P/N/簡圖) sitting directly above the row that carries the part's
+  // actual 客戶料號 (e.g. "后隔板组立" above "后隔板", both describing the same physical
+  // item -- 2026-09-10 confirmed against a real file). That summary row survives
+  // mergeSplitTonnageRows as its own row (its own 簡圖 is exactly what stops it from being
+  // folded away as overflow data), so if the row right after it has no 簡圖 of its own,
+  // borrow the summary row's picture for display -- copying only the image, nothing else.
+  function inheritImageFromSummaryRowAbove(rows) {
+    for (var i = 1; i < rows.length; i++) {
+      var prev = rows[i - 1];
+      if (!rows[i].image && !prev.customerPn && prev.image) {
+        rows[i] = Object.assign({}, rows[i], { image: prev.image });
+      }
+    }
+    return rows;
   }
 
   // Some BOM templates spread one physical part's data across multiple adjacent rows --
@@ -1803,21 +1820,31 @@
   // confirmed; broadened same day after finding the 簡圖-only-row case, which the original
   // narrower "one has tonnage, the other has process" condition didn't catch).
   //
-  // A row with a BLANK 客戶料號 right after one that has it is treated as a continuation
-  // too, not just an exact repeat of the same P/N -- a real file (1234-TST-BOM-0910-1.xlsx)
-  // had the 機台噸位/工程數 on their own row with no P/N of their own at all, immediately
-  // under the row that carries the part's actual P/N/name (2026-09-10 confirmed). Guarded on
-  // the continuation row NOT having its own 項次 -- a row that starts a new top-level
-  // occurrence always carries its own P/N in this convention, so a blank-P/N row with a 項次
-  // would be unexpected and is deliberately NOT swallowed here.
+  // A row with a BLANK 客戶料號 right after one that has it is ALSO treated as a
+  // continuation -- but only when it has no 簡圖 of its own, not just because its P/N is
+  // blank. A real file (1234-TST-BOM-0910-1.xlsx) had 機台噸位/工程數 on their own row with
+  // no P/N and no picture, immediately under the row carrying the part's real P/N/name --
+  // that row is pure overflow data and should fold in (2026-09-10 confirmed). But another
+  // real file (123-TEST-BOM-0910-1.xlsx) has assembly-summary rows that ALSO have a blank
+  // P/N yet carry their own name/ESON P/N/picture (e.g. "后隔板组立" sitting right above
+  // "后隔板", a completely different part) -- those are genuine distinct rows, not overflow,
+  // and folding them into whatever unrelated row happened to precede them would corrupt
+  // that row's data (2026-09-10 confirmed, found via this exact case). The 簡圖 check is
+  // what tells the two apart: an overflow row never carries its own picture, a real part
+  // (even one missing its own P/N) does. Also guarded on the continuation row NOT having
+  // its own 項次 -- a row that starts a new top-level occurrence always carries its own P/N
+  // in this convention, so a blank-P/N row with a 項次 would be unexpected and is
+  // deliberately NOT swallowed here either.
   function mergeSplitTonnageRows(rows) {
     var merged = [];
     var i = 0;
     while (i < rows.length) {
       var acc = rows[i];
       var j = i + 1;
-      while (j < rows.length && acc.customerPn && !rows[j].itemNo &&
-             (!rows[j].customerPn || rows[j].customerPn === acc.customerPn)) {
+      while (j < rows.length && acc.customerPn && !rows[j].itemNo && (
+               rows[j].customerPn === acc.customerPn ||
+               (!rows[j].customerPn && !rows[j].image)
+             )) {
         var nxt = rows[j];
         acc = {
           excelRow: acc.excelRow, sheetName: acc.sheetName, itemNo: acc.itemNo, customerPn: acc.customerPn,
