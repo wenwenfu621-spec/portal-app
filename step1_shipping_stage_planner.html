@@ -94,9 +94,10 @@
   .app { max-width: 980px; margin: 0 auto; padding: 28px 24px 80px; }
 
   .topbar {
+    position: sticky; top: 0; z-index: 10; background: var(--bg);
     display: flex; align-items: flex-end; justify-content: space-between;
     gap: 16px; margin-bottom: 22px; flex-wrap: wrap;
-    border-bottom: 1px solid var(--border); padding-bottom: 18px;
+    border-bottom: 1px solid var(--border); padding-top: 16px; padding-bottom: 18px;
   }
   .eyebrow {
     font-family: 'IBM Plex Mono', monospace;
@@ -298,7 +299,7 @@
       <div class="field-row">
         <div class="field">
           <label for="projectName">專案機種名</label>
-          <input type="text" id="projectName" placeholder="例如：R-9200 系列">
+          <input type="text" id="projectName" placeholder="例如：R-9200 系列" autocomplete="off">
         </div>
       </div>
       <div class="field-row" style="margin-top: 14px;">
@@ -811,6 +812,21 @@
     }
     state = JSON.parse(JSON.stringify(defaultState));
     saveState();
+
+    // "清空表單" is a full page reset, not just §1/§2 -- also drop the uploaded BOM pool
+    // and any cached demand results (§3/§4), which otherwise live outside `state` and
+    // would silently survive a reset (2026-09-10 confirmed).
+    uploadedBomFiles = [];
+    lastBomRows = [];
+    lastDemandData = null;
+    lastPlasticDemandData = null;
+    el.bomFileInput.value = "";
+    el.bomFileStatus.textContent = "";
+    el.bomFileList.innerHTML = "";
+    el.bomMatchResult.innerHTML = "";
+    el.demandResult.innerHTML = "";
+    el.plasticDemandResult.innerHTML = "";
+
     resetArmed = false;
     el.resetBtn.textContent = "清空表單";
     el.resetBtn.classList.remove("arm");
@@ -838,9 +854,9 @@
 
   function buildExportFilename() {
     var now = new Date();
-    var dateStr = now.getFullYear() + "-" + pad2(now.getMonth() + 1) + "-" + pad2(now.getDate());
+    var dateStr = now.getFullYear() + pad2(now.getMonth() + 1) + pad2(now.getDate());
     var nameSafe = (state.projectName || "未命名專案").replace(/[\\\/:*?"<>|]/g, "_").trim() || "未命名專案";
-    var base = "出貨階規劃_" + nameSafe + "_" + dateStr;
+    var base = nameSafe + "_MP Capacity Plan_" + dateStr;
     var key = "shipStagePlanner.exportCount." + dateStr;
     var count = 0;
     try {
@@ -1549,7 +1565,7 @@
   // one JSZip/DOMParser can't fully make sense of, should degrade to "no 簡圖", not break
   // the upload. Not supported for legacy .xls (different, non-zip binary format) -- see the
   // format hint in the §3 panel.
-  async function extractXlsxImages(arrayBuffer) {
+  async function extractXlsxImages(arrayBuffer, sheetName) {
     var images = {};
     try {
       var zip = await JSZip.loadAsync(arrayBuffer);
@@ -1564,9 +1580,14 @@
 
       var wbDoc = await readXmlDoc("xl/workbook.xml");
       if (!wbDoc) return images;
-      var firstSheetEl = wbDoc.getElementsByTagName("sheet")[0];
-      if (!firstSheetEl) return images;
-      var sheetRid = firstSheetEl.getAttribute("r:id");
+      var sheetEls = wbDoc.getElementsByTagName("sheet");
+      var targetSheetEl = null;
+      for (var se = 0; se < sheetEls.length; se++) {
+        if (sheetEls[se].getAttribute("name") === sheetName) { targetSheetEl = sheetEls[se]; break; }
+      }
+      if (!targetSheetEl) targetSheetEl = sheetEls[0]; // fallback: name lookup failed, use first sheet
+      if (!targetSheetEl) return images;
+      var sheetRid = targetSheetEl.getAttribute("r:id");
       if (!sheetRid) return images;
 
       var wbRelsDoc = await readXmlDoc("xl/_rels/workbook.xml.rels");
@@ -1682,7 +1703,7 @@
 
   // imagesByRow: optional map of 0-indexed sheet row -> {base64, ext} (from
   // extractXlsxImages, .xlsx uploads only) -- attaches each part's own 簡圖 to its row.
-  function parseBomRows(aoa, cols, headerRow, imagesByRow) {
+  function parseBomRows(aoa, cols, headerRow, imagesByRow, sheetName) {
     var rows = [];
     for (var r = headerRow + 1; r < aoa.length; r++) {
       var customerPn = bomCellText(aoa, r, cols.customerPn);
@@ -1695,7 +1716,7 @@
       var useQty = bomCellText(aoa, r, cols.useQty);
       if (!customerPn && !esonPn && !nameZh && !nameEn && !itemNo && !tonnage && !process && !useQty) continue; // fully blank row
       var image = imagesByRow ? (imagesByRow[r] || null) : null;
-      rows.push({ excelRow: r + 1, itemNo: itemNo, customerPn: customerPn, esonPn: esonPn, name: nameZh || nameEn, tonnage: tonnage, process: process, useQty: useQty, image: image });
+      rows.push({ excelRow: r + 1, sheetName: sheetName, itemNo: itemNo, customerPn: customerPn, esonPn: esonPn, name: nameZh || nameEn, tonnage: tonnage, process: process, useQty: useQty, image: image });
     }
     return mergeSplitTonnageRows(rows);
   }
@@ -1721,7 +1742,7 @@
       while (j < rows.length && acc.customerPn && rows[j].customerPn === acc.customerPn) {
         var nxt = rows[j];
         acc = {
-          excelRow: acc.excelRow, itemNo: acc.itemNo, customerPn: acc.customerPn,
+          excelRow: acc.excelRow, sheetName: acc.sheetName, itemNo: acc.itemNo, customerPn: acc.customerPn,
           esonPn: acc.esonPn || nxt.esonPn, name: acc.name || nxt.name,
           tonnage: acc.tonnage || nxt.tonnage, process: acc.process || nxt.process,
           useQty: acc.useQty || nxt.useQty, image: acc.image || nxt.image
@@ -1754,6 +1775,19 @@
   // uploaded BOM file (different shipping stages/projects, not all in one export) -- those
   // are merged together for machine-demand counting, and `matchCount` tells the caller how
   // many occurrences were found so it can flag the merge to the user (2026-09-04 confirmed).
+  // The scan also stops at a fileId/sheetName change even without hitting a 項次 -- some
+  // sheets (e.g. a single-stage 底座組件 sheet) have no 項次 at all, so without this guard the
+  // expansion would run off the end of that sheet and swallow the next file/sheet's rows too.
+  //
+  // The 項次 cell itself is only trusted as a boundary when it looks like an actual item
+  // number -- a real F0R file had a trailing "文管中心" (document-control stamp) sitting in
+  // that column on the sheet's last row, which isn't a real item number (2026-09-10
+  // confirmed). It happened to land on the last row there so it was harmless, but the same
+  // stray text landing mid-sheet in some other file would otherwise cut a sub-tree short.
+  function looksLikeItemNo(v) {
+    return /^[0-9]+(\.[0-9]+)?$/.test((v || "").trim());
+  }
+
   function matchBomForPn(bomRows, pn) {
     if (!pn) return null;
     var target = pn.trim().toUpperCase();
@@ -1766,7 +1800,8 @@
         combined.push(bomRows[i]);
         var j = i + 1;
         for (; j < bomRows.length; j++) {
-          if (bomRows[j].itemNo) break;
+          if (looksLikeItemNo(bomRows[j].itemNo)) break;
+          if (bomRows[j].fileId !== bomRows[i].fileId || bomRows[j].sheetName !== bomRows[i].sheetName) break;
           combined.push(bomRows[j]);
         }
         i = j;
@@ -1886,7 +1921,7 @@
       row.className = "bom-file-row";
       var name = document.createElement("span");
       name.className = "bom-file-name";
-      name.textContent = f.name + "（工作表：" + f.sheetName + "，" + f.bomRows.length + " 筆）";
+      name.textContent = f.name + "（工作表：" + f.sheetNames.join("、") + "，" + f.bomRows.length + " 筆）";
       row.appendChild(name);
       var delBtn = document.createElement("button");
       delBtn.className = "row-del";
@@ -1922,28 +1957,52 @@
     reader.onload = async function () {
       try {
         var wb = XLSX.read(reader.result, { type: "array" });
-        var sheetName = wb.SheetNames[0];
-        var ws = sheetName && wb.Sheets[sheetName];
-        if (!ws) {
+        if (!wb.SheetNames.length) {
           el.bomFileStatus.textContent = "找不到工作表。";
-          return;
-        }
-        var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
-        var headerInfo = findBomHeaderColumns(aoa);
-        if (!headerInfo.columns.customerPn) {
-          el.bomFileStatus.textContent = "找不到「客戶料號」欄位標題，請確認 BOM 格式是否正確。";
           return;
         }
         // 簡圖 only for .xlsx (zip+XML); legacy .xls has no practical way to extract this
         // in-browser -- see the format hint in the panel above.
         var isXlsx = /\.xlsx$/i.test(file.name) && typeof JSZip !== "undefined";
-        var imagesByRow = isXlsx ? await extractXlsxImages(reader.result) : {};
-        var bomRows = parseBomRows(aoa, headerInfo.columns, headerInfo.headerRow, imagesByRow);
-        uploadedBomFiles.push({
-          id: Date.now() + "-" + Math.random().toString(36).slice(2),
-          name: file.name, sheetName: sheetName, bomRows: bomRows
-        });
-        el.bomFileStatus.textContent = "已新增「" + file.name + "」（工作表：" + sheetName + "），共 " + bomRows.length + " 筆料號列。";
+        var fileId = Date.now() + "-" + Math.random().toString(36).slice(2);
+        var parsedSheets = [];
+        var skippedSheets = [];
+        for (var s = 0; s < wb.SheetNames.length; s++) {
+          var sheetName = wb.SheetNames[s];
+          var ws = wb.Sheets[sheetName];
+          if (!ws) { skippedSheets.push(sheetName); continue; }
+          var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
+          var headerInfo = findBomHeaderColumns(aoa);
+          if (!headerInfo.columns.customerPn) { skippedSheets.push(sheetName); continue; } // not a BOM sheet (e.g. cover/summary page)
+          var imagesByRow = isXlsx ? await extractXlsxImages(reader.result, sheetName) : {};
+          var bomRows = parseBomRows(aoa, headerInfo.columns, headerInfo.headerRow, imagesByRow, sheetName);
+          bomRows.forEach(function (r) { r.fileId = fileId; });
+          parsedSheets.push({ sheetName: sheetName, bomRows: bomRows });
+        }
+
+        if (parsedSheets.length === 0) {
+          el.bomFileStatus.textContent = "找不到「客戶料號」欄位標題，請確認 BOM 格式是否正確。";
+          return;
+        }
+
+        if (skippedSheets.length > 0) {
+          var confirmMsg = "「" + file.name + "」有以下分頁找不到「客戶料號」欄位標題，將被跳過：\n" +
+            skippedSheets.join("、") +
+            "\n\n將加入的分頁：" +
+            parsedSheets.map(function (p) { return p.sheetName + "（" + p.bomRows.length + " 筆）"; }).join("、") +
+            "\n\n是否繼續？";
+          if (!window.confirm(confirmMsg)) {
+            el.bomFileStatus.textContent = "已取消上傳「" + file.name + "」。";
+            return;
+          }
+        }
+
+        var combinedRows = [];
+        parsedSheets.forEach(function (p) { combinedRows = combinedRows.concat(p.bomRows); });
+        var sheetNames = parsedSheets.map(function (p) { return p.sheetName; });
+
+        uploadedBomFiles.push({ id: fileId, name: file.name, sheetNames: sheetNames, bomRows: combinedRows });
+        el.bomFileStatus.textContent = "已新增「" + file.name + "」（工作表：" + sheetNames.join("、") + "），共 " + combinedRows.length + " 筆料號列。";
         recomputeMergedBom();
       } catch (err) {
         el.bomFileStatus.textContent = "解析失敗：" + (err && err.message ? err.message : "未知錯誤");
@@ -2180,11 +2239,13 @@
   // Splits the BOM「機台噸位」/「工程數」compound values into (tonnage, config, qty)
   // pairs. Handles two source conventions, unified into one pass:
   //
-  // - 機台噸位 tokens come from splitting on line breaks AND "&" (older BOMs put multiple
-  //   tonnages on one line joined by "&"; newer ones put one tonnage per line). A token may
-  //   carry its own "*N" quantity suffix (e.g. "300T*7", 2026-09-04 format) -- when
-  //   present, that IS the real per-tonnage quantity; when absent, quantity falls back to
-  //   工程數's positional digit (older "&"/"+" format, §8.3).
+  // - 機台噸位 tokens come from splitting on line breaks, "&", AND "+" (older BOMs put
+  //   multiple tonnages on one line joined by "&"; newer ones put one tonnage per line; a
+  //   real F0R-family file -- 123-TEST-BOM-0910-1.xlsx, 广达L05M rows 41/66/92 -- joins them
+  //   with "+" instead, e.g. "160T+80T" for two separate machines, 2026-09-10 confirmed). A
+  //   token may carry its own "*N" quantity suffix (e.g. "300T*7", 2026-09-04 format) --
+  //   when present, that IS the real per-tonnage quantity; when absent, quantity falls back
+  //   to 工程數's positional digit (older "&"/"+" format, §8.3).
   // - 工程數 tokens come from splitting on "+". A leading digit is a repeat count, not part
   //   of the config code. "S" always means "TS" -- with or without a digit prefix ("S",
   //   "3S", "11S" are all shorthand for TS; 2026-09-04 confirmed "11S"/"11TS" mean the same
@@ -2193,15 +2254,16 @@
   //   (2026-09-04 confirmed against real BOM examples).
   // - When there's exactly ONE 工程數 token but MORE than one 機台噸位 token, that single
   //   code covers every tonnage line, each keeping its own "*N" quantity -- the code's own
-  //   digit prefix in this shape (e.g. "12S" for tonnage lines summing 1+7+4=12) is only a
-  //   total/checksum across every line, NOT a quantity to attach to any one line.
+  //   digit prefix in this shape (e.g. "12S" for tonnage lines summing 1+7+4=12, or row
+  //   66/92 above's "6S"/"5S") is only a total/checksum across every line, NOT a quantity to
+  //   attach to any one line.
   function parseTonnageProcess(tonnageStr, processStr) {
     tonnageStr = String(tonnageStr || "");
     processStr = String(processStr || "");
     if (!tonnageStr.trim() || !processStr.trim()) return [];
 
     var entries = tonnageStr.split(/\r?\n/).reduce(function (acc, line) {
-      return acc.concat(line.split("&"));
+      return acc.concat(line.split(/[&+]/));
     }, []).map(function (s) { return s.trim(); }).filter(Boolean).map(function (t) {
       var m = t.match(/^(.+?)\*(\d+)$/);
       return m ? { tonnage: m[1].trim(), qty: parseInt(m[2], 10) || 1, hasOwnQty: true }
