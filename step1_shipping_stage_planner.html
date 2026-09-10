@@ -1186,6 +1186,18 @@
       if (w > colMax[ci]) colMax[ci] = w;
     });
 
+    // Same "what does the orange fill mean" note the on-screen table shows below itself
+    // (renderPlasticDemandResult) -- the export had the color but never the explanation
+    // (2026-09-10).
+    if (demandData.rows.some(function (r) { return !r.inRef; })) {
+      var noteR = totalR + 1;
+      var noteCell = ws4.getCell(noteR, 1);
+      noteCell.value = "橘色列是參考表裡沒有的新噸位（比對到但表中沒有），可到上方參考表輸入相同的機台噸位手動新增。";
+      noteCell.font = { name: fontName, size: 10, italic: true, color: { argb: "FF5C6773" } };
+      noteCell.alignment = { horizontal: "left", vertical: "middle" };
+      ws4.mergeCells(noteR, 1, noteR, headers.length);
+    }
+
     colMax.forEach(function (w, i) { ws4.getColumn(i + 1).width = Math.max(w + 4, 9); });
   }
 
@@ -1352,6 +1364,17 @@
       if (w > colMax[ci]) colMax[ci] = w;
     });
     ws2.mergeCells(totalR, 1, totalR, 2);
+
+    // Same "what does the orange fill mean" note the on-screen table shows below itself
+    // (renderDemandResult) -- the export had the color but never the explanation (2026-09-10).
+    if (demandData.rows.some(function (r) { return !r.inRef; })) {
+      var noteR = totalR + 1;
+      var noteCell = ws2.getCell(noteR, 1);
+      noteCell.value = "橘色列是參考表裡沒有的新組合（比對到但表中沒有），可到上方參考表輸入相同的機台噸位／工程配置手動新增。";
+      noteCell.font = { name: fontName, size: 10, italic: true, color: { argb: "FF5C6773" } };
+      noteCell.alignment = { horizontal: "left", vertical: "middle" };
+      ws2.mergeCells(noteR, 1, noteR, headers.length);
+    }
 
     colMax.forEach(function (w, i) { ws2.getColumn(i + 1).width = Math.max(w + 4, 9); });
   }
@@ -1779,13 +1802,22 @@
   // calculated/exported once, with all its data, not split or duplicated (2026-09-04
   // confirmed; broadened same day after finding the 簡圖-only-row case, which the original
   // narrower "one has tonnage, the other has process" condition didn't catch).
+  //
+  // A row with a BLANK 客戶料號 right after one that has it is treated as a continuation
+  // too, not just an exact repeat of the same P/N -- a real file (1234-TST-BOM-0910-1.xlsx)
+  // had the 機台噸位/工程數 on their own row with no P/N of their own at all, immediately
+  // under the row that carries the part's actual P/N/name (2026-09-10 confirmed). Guarded on
+  // the continuation row NOT having its own 項次 -- a row that starts a new top-level
+  // occurrence always carries its own P/N in this convention, so a blank-P/N row with a 項次
+  // would be unexpected and is deliberately NOT swallowed here.
   function mergeSplitTonnageRows(rows) {
     var merged = [];
     var i = 0;
     while (i < rows.length) {
       var acc = rows[i];
       var j = i + 1;
-      while (j < rows.length && acc.customerPn && rows[j].customerPn === acc.customerPn) {
+      while (j < rows.length && acc.customerPn && !rows[j].itemNo &&
+             (!rows[j].customerPn || rows[j].customerPn === acc.customerPn)) {
         var nxt = rows[j];
         acc = {
           excelRow: acc.excelRow, sheetName: acc.sheetName, itemNo: acc.itemNo, customerPn: acc.customerPn,
