@@ -810,19 +810,12 @@
     renderExcelPreview();
   });
 
-  var resetArmed = false;
-  el.resetBtn.addEventListener("click", function () {
-    if (!resetArmed) {
-      resetArmed = true;
-      el.resetBtn.textContent = "再按一次確認清空";
-      el.resetBtn.classList.add("arm");
-      setTimeout(function () {
-        resetArmed = false;
-        el.resetBtn.textContent = "清空表單";
-        el.resetBtn.classList.remove("arm");
-      }, 3000);
-      return;
-    }
+  // The actual reset action, factored out of the button's own two-click arm/confirm gesture
+  // below so an external trigger (e.g. postMessage from a sticky button living outside this
+  // iframe, see the "message" listener near the bottom) can perform it directly -- that
+  // outer button owns its own confirm UX, so it only needs to ask this page to actually do
+  // the reset once, not fake two clicks through resetBtn's own guard (2026-09-10).
+  function performFullReset() {
     state = JSON.parse(JSON.stringify(defaultState));
     saveState();
 
@@ -839,10 +832,26 @@
     el.demandResult.innerHTML = "";
     el.plasticDemandResult.innerHTML = "";
 
+    renderAll();
+  }
+
+  var resetArmed = false;
+  el.resetBtn.addEventListener("click", function () {
+    if (!resetArmed) {
+      resetArmed = true;
+      el.resetBtn.textContent = "再按一次確認清空";
+      el.resetBtn.classList.add("arm");
+      setTimeout(function () {
+        resetArmed = false;
+        el.resetBtn.textContent = "清空表單";
+        el.resetBtn.classList.remove("arm");
+      }, 3000);
+      return;
+    }
     resetArmed = false;
     el.resetBtn.textContent = "清空表單";
     el.resetBtn.classList.remove("arm");
-    renderAll();
+    performFullReset();
   });
 
   // ---------- Excel export ----------
@@ -1194,8 +1203,10 @@
       var noteCell = ws4.getCell(noteR, 1);
       noteCell.value = "橘色列是參考表裡沒有的新噸位（比對到但表中沒有），可到上方參考表輸入相同的機台噸位手動新增。";
       noteCell.font = { name: fontName, size: 10, italic: true, color: { argb: "FF5C6773" } };
-      noteCell.alignment = { horizontal: "left", vertical: "middle" };
-      ws4.mergeCells(noteR, 1, noteR, headers.length);
+      noteCell.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+      var noteSpan4 = Math.max(headers.length, 6); // headers.length alone can be too narrow (e.g. 1 site) to show the note without wrapping to many lines
+      ws4.mergeCells(noteR, 1, noteR, noteSpan4);
+      ws4.getRow(noteR).height = 30;
     }
 
     colMax.forEach(function (w, i) { ws4.getColumn(i + 1).width = Math.max(w + 4, 9); });
@@ -1372,8 +1383,10 @@
       var noteCell = ws2.getCell(noteR, 1);
       noteCell.value = "橘色列是參考表裡沒有的新組合（比對到但表中沒有），可到上方參考表輸入相同的機台噸位／工程配置手動新增。";
       noteCell.font = { name: fontName, size: 10, italic: true, color: { argb: "FF5C6773" } };
-      noteCell.alignment = { horizontal: "left", vertical: "middle" };
-      ws2.mergeCells(noteR, 1, noteR, headers.length);
+      noteCell.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+      var noteSpan2 = Math.max(headers.length, 6); // headers.length alone can be too narrow (e.g. 1 site) to show the note without wrapping to many lines
+      ws2.mergeCells(noteR, 1, noteR, noteSpan2);
+      ws2.getRow(noteR).height = 30;
     }
 
     colMax.forEach(function (w, i) { ws2.getColumn(i + 1).width = Math.max(w + 4, 9); });
@@ -1558,7 +1571,10 @@
     }
   }
 
-  el.exportBtn.addEventListener("click", function () {
+  // Factored out of the button's own click listener so an external trigger (postMessage
+  // from a sticky button living outside this iframe -- see the "message" listener near the
+  // bottom) can perform the same export without needing a synthetic DOM click (2026-09-10).
+  function performExport() {
     if (typeof ExcelJS === "undefined") {
       showToast("Excel 匯出元件載入失敗，請檢查網路連線後重新整理再試一次。", true);
       return;
@@ -1592,7 +1608,9 @@
         el.exportBtn.disabled = false;
         el.exportBtn.textContent = "匯出 Excel";
       });
-  });
+  }
+
+  el.exportBtn.addEventListener("click", performExport);
 
   // ---------- Step 2 (stage 1): BOM upload, P/N match, tree expand ----------
   // Column identification is done by scanning header text (not fixed cell coordinates) --
@@ -2544,6 +2562,22 @@
     }
     lastDemandData = computeStampingDemand();
     renderDemandResult(lastDemandData);
+  });
+
+  // When embedded in portal-app's iframe (components.html), CSS position:sticky on the
+  // topbar can't stay visible while the OUTER page scrolls -- sticky never crosses an
+  // iframe boundary, only sticks within its own document's scroll. portal-app compensates
+  // with its own real, always-visible 匯出Excel/清空表單 buttons living outside this iframe,
+  // which reach in via postMessage instead of a synthetic click -- reset still gets its own
+  // two-click confirm, just owned by the outer button rather than faked from in here
+  // (2026-09-10). `source` guards against unrelated postMessage traffic on the same page;
+  // origin is intentionally not checked since portal-app embeds this file inline via
+  // srcdoc, which has no stable origin/URL to compare against.
+  window.addEventListener("message", function (ev) {
+    var data = ev.data;
+    if (!data || typeof data !== "object" || data.source !== "capacityScheduler") return;
+    if (data.action === "export") performExport();
+    else if (data.action === "resetConfirmed") performFullReset();
   });
 
   renderAll();
