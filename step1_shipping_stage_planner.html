@@ -2580,6 +2580,18 @@
     else if (data.action === "resetConfirmed") performFullReset();
   });
 
+  // This page's own 匯出Excel/清空表單 buttons are only useful when opened standalone --
+  // inside portal-app's iframe, its own always-visible buttons (which drive these same
+  // actions through the postMessage bridge above) fully replace them, and leaving both
+  // visible just shows two duplicate-looking button pairs (2026-09-10 confirmed after the
+  // user saw exactly that). `window.self !== window.top` is a simple, accurate enough
+  // stand-in for "am I embedded" -- the only place this file is embedded in an iframe today
+  // is portal-app, which always provides the replacement buttons.
+  if (window.self !== window.top) {
+    var topbarActionsEl = document.querySelector(".topbar-actions");
+    if (topbarActionsEl) topbarActionsEl.style.display = "none";
+  }
+
   renderAll();
 })();
 </script>
