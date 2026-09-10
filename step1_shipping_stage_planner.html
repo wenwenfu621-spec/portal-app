@@ -1172,6 +1172,20 @@
       });
     });
 
+    // 總計 row -- same summed-per-site totals as the on-screen table (2026-09-10).
+    var totalR = demandData.rows.length + 2;
+    var totalValues = ["總計"].concat(demandData.sites.map(function (s) {
+      return demandData.rows.reduce(function (sum, row) { return sum + (row.counts[s] || 0); }, 0);
+    }));
+    totalValues.forEach(function (v, ci) {
+      var cell = ws4.getCell(totalR, ci + 1);
+      cell.value = v;
+      styleCell(cell, { bold: true, fill: HEADER_FILL });
+      if (ci >= 1) cell.numFmt = "0";
+      var w = displayWidth(v);
+      if (w > colMax[ci]) colMax[ci] = w;
+    });
+
     colMax.forEach(function (w, i) { ws4.getColumn(i + 1).width = Math.max(w + 4, 9); });
   }
 
@@ -1323,6 +1337,21 @@
         if (w > colMax[ci]) colMax[ci] = w;
       });
     });
+
+    // 總計 row -- same summed-per-site totals as the on-screen table (2026-09-10).
+    var totalR = demandData.rows.length + 2;
+    var totalValues = ["總計", ""].concat(demandData.sites.map(function (s) {
+      return demandData.rows.reduce(function (sum, row) { return sum + (row.counts[s] || 0); }, 0);
+    }));
+    totalValues.forEach(function (v, ci) {
+      var cell = ws2.getCell(totalR, ci + 1);
+      cell.value = v;
+      styleCell(cell, { bold: true, fill: HEADER_FILL });
+      if (ci >= 2) cell.numFmt = "0";
+      var w = displayWidth(v);
+      if (w > colMax[ci]) colMax[ci] = w;
+    });
+    ws2.mergeCells(totalR, 1, totalR, 2);
 
     colMax.forEach(function (w, i) { ws2.getColumn(i + 1).width = Math.max(w + 4, 9); });
   }
