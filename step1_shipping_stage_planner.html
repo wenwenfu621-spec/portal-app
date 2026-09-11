@@ -217,16 +217,18 @@
   table.demand-table tfoot td { font-weight: 700; border-top: 2px solid var(--border-strong); background: var(--surface-2); }
 
   .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
-  table.pn-table { width: 100%; border-collapse: collapse; min-width: 780px; table-layout: auto; }
+  table.pn-table { width: 100%; border-collapse: collapse; min-width: 800px; table-layout: auto; }
   /* column order: 1 Item, 2 機種, 3 P/N, 4 Description, 5 Q'Ty, 6 Usage, 7 生產地, 8 delete
      (類型 exists in the data model still, just not rendered here for now -- 2026-09-11).
-     機種/Description/Q'Ty/Usage/生產地 each keep a protected minimum; P/N has none, so it's
-     the column that gives way first when the others need more room. */
+     P/N now gets its own protected minimum too (was the one column that gave way first,
+     but that meant it collapsed to near-nothing whenever the others crowded it out) --
+     Q'Ty/Usage/生產地 gave up some of their own width to make room (2026-09-11 confirmed). */
   table.pn-table th:nth-child(2), table.pn-table td:nth-child(2) { min-width: 90px; }
+  table.pn-table th:nth-child(3), table.pn-table td:nth-child(3) { min-width: 150px; }
   table.pn-table th:nth-child(4), table.pn-table td:nth-child(4) { min-width: 170px; }
-  table.pn-table th:nth-child(5), table.pn-table td:nth-child(5) { min-width: 64px; }
-  table.pn-table th:nth-child(6), table.pn-table td:nth-child(6) { min-width: 120px; }
-  table.pn-table th:nth-child(7), table.pn-table td:nth-child(7) { min-width: 124px; }
+  table.pn-table th:nth-child(5), table.pn-table td:nth-child(5) { min-width: 52px; }
+  table.pn-table th:nth-child(6), table.pn-table td:nth-child(6) { min-width: 96px; }
+  table.pn-table th:nth-child(7), table.pn-table td:nth-child(7) { min-width: 100px; }
   table.pn-table th {
     text-align: center; font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase;
     color: var(--text-faint); font-weight: 600; background: var(--surface-2);
