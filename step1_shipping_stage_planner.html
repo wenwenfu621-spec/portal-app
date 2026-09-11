@@ -438,6 +438,16 @@
       <div id="plasticDemandResult" style="margin-top:14px;"></div>
     </section>
 
+    <section class="panel">
+      <div class="panel-head"><span class="step">§6</span><h2>共用單件彙整表</h2></div>
+      <p class="panel-note" style="margin-top:-8px; margin-bottom: 12px;">
+        找出同一個單件料號，被兩個以上不同出貨階（§2 列）各自比對到的 BOM 子項目樹共用的情況，
+        依機種／客戶總成料號列出。請先在 §3 上傳並比對過 BOM，再按「計算共用單件」。
+      </p>
+      <button class="add-row-btn" id="calcSharedPartsBtn" type="button">計算共用單件</button>
+      <div id="sharedPartsResult" style="margin-top:14px;"></div>
+    </section>
+
   </div>
 </div>
 
@@ -497,6 +507,9 @@
 
   // Same convention as lastDemandData, for "計算塑膠機台需求".
   var lastPlasticDemandData = null;
+
+  // Same convention as lastDemandData, for "計算共用單件".
+  var lastSharedPartsData = null;
 
   function loadState() {
     try {
@@ -558,7 +571,9 @@
     newPlasticTonnageInput: document.getElementById("newPlasticTonnageInput"),
     addPlasticRefRowBtn: document.getElementById("addPlasticRefRowBtn"),
     calcPlasticDemandBtn: document.getElementById("calcPlasticDemandBtn"),
-    plasticDemandResult: document.getElementById("plasticDemandResult")
+    plasticDemandResult: document.getElementById("plasticDemandResult"),
+    calcSharedPartsBtn: document.getElementById("calcSharedPartsBtn"),
+    sharedPartsResult: document.getElementById("sharedPartsResult")
   };
 
   function makeManualRow() { return { type: "", pn: "", desc: "", qty: "", usage: "", usageAuto: true, site: "", siteSameAsAbove: false }; }
@@ -826,11 +841,13 @@
     lastBomRows = [];
     lastDemandData = null;
     lastPlasticDemandData = null;
+    lastSharedPartsData = null;
     el.bomFileInput.value = "";
     el.bomFileStatus.textContent = "";
     el.bomFileList.innerHTML = "";
     el.demandResult.innerHTML = "";
     el.plasticDemandResult.innerHTML = "";
+    el.sharedPartsResult.innerHTML = "";
 
     renderAll();
   }
@@ -1135,6 +1152,11 @@
       addPlasticDemandSheet(wb, fontName, lastPlasticDemandData);
     }
 
+    // Same convention again, for §6's "計算共用單件".
+    if (lastSharedPartsData) {
+      addSharedPartsSheet(wb, fontName, lastSharedPartsData);
+    }
+
     return wb;
   }
 
@@ -1210,6 +1232,63 @@
     }
 
     colMax.forEach(function (w, i) { ws4.getColumn(i + 1).width = Math.max(w + 4, 9); });
+  }
+
+  // Renders computeSharedPartsReport()'s groups as a worksheet -- one row per (出貨階,
+  // shared part) pair, with the 序號 column merged down across each group's rows (mirroring
+  // the on-screen table's rowSpan). 照片 embeds the same way as BOM總覽's.
+  function addSharedPartsSheet(wb, fontName, data) {
+    var ws5 = wb.addWorksheet("共用單件彙整表");
+    var CENTER_NOWRAP = { horizontal: "center", vertical: "middle", wrapText: false };
+    var THIN = { style: "thin", color: { argb: "FFB9C3CC" } };
+    var BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+    var HEADER_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCEEEC" } };
+    var ZEBRA_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F4F6" } };
+    var IMAGE_COL = 6; // 1-indexed column F = 照片
+
+    function styleCell(cell, opts) {
+      opts = opts || {};
+      cell.font = { name: fontName, size: opts.size || 11, bold: !!opts.bold };
+      cell.alignment = CENTER_NOWRAP;
+      cell.border = BORDER;
+      if (opts.fill) cell.fill = opts.fill;
+    }
+
+    var headers = ["序号", "機種", "產品別", "客戶總成料號", "單件料號", "照片", "Usage per rack", "Usage per part"];
+    headers.forEach(function (h, i) {
+      var cell = ws5.getCell(1, i + 1);
+      cell.value = h;
+      styleCell(cell, { bold: true, fill: HEADER_FILL });
+    });
+    var colMax = headers.map(function (h) { return displayWidth(h); });
+
+    var r = 2;
+    data.groups.forEach(function (g, gi) {
+      var isEvenGroup = (gi + 1) % 2 === 0;
+      var groupStartRow = r;
+      g.entries.forEach(function (e) {
+        var values = [g.seq, e.modelName, e.productDesc, e.topPn, e.partPn, null, e.usagePerRack, e.usagePerPart];
+        values.forEach(function (v, ci) {
+          var cell = ws5.getCell(r, ci + 1);
+          styleCell(cell, isEvenGroup ? { fill: ZEBRA_FILL } : {});
+          if (ci + 1 === IMAGE_COL) return; // embedded separately via addImage below
+          cell.value = v;
+          var w = displayWidth(v);
+          if (w > colMax[ci]) colMax[ci] = w;
+        });
+        ws5.getRow(r).height = e.image ? 60 : 18;
+        if (e.image) {
+          var imageId = wb.addImage({ base64: "data:image/" + e.image.ext + ";base64," + e.image.base64, extension: e.image.ext });
+          ws5.addImage(imageId, { tl: { col: IMAGE_COL - 1, row: r - 1 }, br: { col: IMAGE_COL, row: r } });
+        }
+        r++;
+      });
+      if (g.entries.length > 1) ws5.mergeCells(groupStartRow, 1, r - 1, 1);
+    });
+
+    colMax.forEach(function (w, i) {
+      ws5.getColumn(i + 1).width = (i + 1 === IMAGE_COL) ? 12 : Math.max(w + 6, 10);
+    });
   }
 
   // One 階層-1 row per matched §2 出貨階 (itemSeq = that row's own Item number, i.e. its
@@ -1780,6 +1859,28 @@
     return { columns: found, headerRow: headerRow };
   }
 
+  // Scans the same header region as findBomHeaderColumns for a "機種名稱﹕XXX" cell (a
+  // single cell's own text, not a column header) -- the model/project name each BOM file
+  // carries about itself, used by the shared-part cross-reference report to label which
+  // 機種 each row came from (2026-09-11 confirmed against real F0Q/F0QA BOM files). The
+  // colon after "機種名稱" is a fullwidth "﹕" in real files, not a plain ":" -- matching
+  // both.
+  function findModelName(aoa) {
+    var scanRows = Math.min(BOM_HEADER_SCAN_ROWS, aoa.length);
+    for (var r = 0; r < scanRows; r++) {
+      var rowArr = aoa[r] || [];
+      for (var c = 0; c < rowArr.length; c++) {
+        var raw = rowArr[c];
+        var text = raw == null ? "" : String(raw);
+        var idx = text.indexOf("機種名稱");
+        if (idx === -1) continue;
+        var rest = text.slice(idx + 4).replace(/^[:：﹕\s]+/, "").trim();
+        if (rest) return rest;
+      }
+    }
+    return "";
+  }
+
   function bomCellText(aoa, r, colInfo) {
     if (!colInfo) return "";
     var rowArr = aoa[r];
@@ -1790,7 +1891,7 @@
 
   // imagesByRow: optional map of 0-indexed sheet row -> {base64, ext} (from
   // extractXlsxImages, .xlsx uploads only) -- attaches each part's own 簡圖 to its row.
-  function parseBomRows(aoa, cols, headerRow, imagesByRow, sheetName) {
+  function parseBomRows(aoa, cols, headerRow, imagesByRow, sheetName, modelName) {
     var rows = [];
     for (var r = headerRow + 1; r < aoa.length; r++) {
       var customerPn = bomCellText(aoa, r, cols.customerPn);
@@ -1803,7 +1904,7 @@
       var useQty = bomCellText(aoa, r, cols.useQty);
       if (!customerPn && !esonPn && !nameZh && !nameEn && !itemNo && !tonnage && !process && !useQty) continue; // fully blank row
       var image = imagesByRow ? (imagesByRow[r] || null) : null;
-      rows.push({ excelRow: r + 1, sheetName: sheetName, itemNo: itemNo, customerPn: customerPn, esonPn: esonPn, name: nameZh || nameEn, tonnage: tonnage, process: process, useQty: useQty, image: image });
+      rows.push({ excelRow: r + 1, sheetName: sheetName, modelName: modelName, itemNo: itemNo, customerPn: customerPn, esonPn: esonPn, name: nameZh || nameEn, tonnage: tonnage, process: process, useQty: useQty, image: image });
     }
     return inheritImageFromSummaryRowAbove(mergeSplitTonnageRows(rows));
   }
@@ -1865,7 +1966,7 @@
              )) {
         var nxt = rows[j];
         acc = {
-          excelRow: acc.excelRow, sheetName: acc.sheetName, itemNo: acc.itemNo, customerPn: acc.customerPn,
+          excelRow: acc.excelRow, sheetName: acc.sheetName, modelName: acc.modelName, itemNo: acc.itemNo, customerPn: acc.customerPn,
           esonPn: acc.esonPn || nxt.esonPn, name: acc.name || nxt.name,
           tonnage: acc.tonnage || nxt.tonnage, process: acc.process || nxt.process,
           useQty: acc.useQty || nxt.useQty, image: acc.image || nxt.image
@@ -2098,7 +2199,8 @@
           var headerInfo = findBomHeaderColumns(aoa);
           if (!headerInfo.columns.customerPn) { skippedSheets.push(sheetName); continue; } // not a BOM sheet (e.g. cover/summary page)
           var imagesByRow = isXlsx ? await extractXlsxImages(reader.result, sheetName) : {};
-          var bomRows = parseBomRows(aoa, headerInfo.columns, headerInfo.headerRow, imagesByRow, sheetName);
+          var modelName = findModelName(aoa);
+          var bomRows = parseBomRows(aoa, headerInfo.columns, headerInfo.headerRow, imagesByRow, sheetName, modelName);
           bomRows.forEach(function (r) { r.fileId = fileId; });
           parsedSheets.push({ sheetName: sheetName, bomRows: bomRows });
         }
@@ -2562,6 +2664,119 @@
     }
     lastDemandData = computeStampingDemand();
     renderDemandResult(lastDemandData);
+  });
+
+  // For each §2 出貨階, expand its matched BOM tree and record every sub-item's own P/N
+  // (excluding the top-level row itself) against which §2 row(s) use it. A P/N used by only
+  // ONE §2 row isn't "shared" in the sense this report cares about -- only P/Ns that show up
+  // under two or more DIFFERENT §2 rows are included, grouped together under one 序號
+  // (2026-09-11 confirmed). 機種 comes from each matched BOM file's own "機種名稱﹕" header
+  // cell (see findModelName) -- distinct from 客戶總成料號, which is just that §2 row's own
+  // P/N (the top-level occurrence's customerPn, always identical to the row's own P/N).
+  function computeSharedPartsReport() {
+    var rows = state.manualRows;
+    var partMap = {}; // customerPn (upper) -> array of per-stage entries
+    var partOrder = [];
+
+    rows.forEach(function (row, i) {
+      var pn = (row.pn || "").trim();
+      if (!pn) return;
+      var group = matchBomForPn(lastBomRows, pn);
+      if (!group) return;
+      var top = group.items[0];
+      var seenInThisStage = {};
+      group.items.slice(1).forEach(function (sub) {
+        var subPn = (sub.customerPn || "").trim();
+        if (!subPn) return;
+        var key = subPn.toUpperCase();
+        if (seenInThisStage[key]) return; // same part used more than once within one stage's own tree
+        seenInThisStage[key] = true;
+        if (!partMap[key]) { partMap[key] = []; partOrder.push(key); }
+        partMap[key].push({
+          stageIndex: i, modelName: top.modelName || "", productDesc: top.name || "",
+          topPn: top.customerPn || "", partPn: sub.customerPn || "", image: sub.image || null,
+          usagePerRack: row.usage, usagePerPart: sub.useQty
+        });
+      });
+    });
+
+    var groups = [];
+    var seq = 0;
+    partOrder.forEach(function (key) {
+      var entries = partMap[key];
+      var distinctStages = {};
+      entries.forEach(function (e) { distinctStages[e.stageIndex] = true; });
+      if (Object.keys(distinctStages).length < 2) return; // not actually shared across stages
+      seq++;
+      groups.push({ seq: seq, partPn: key, entries: entries });
+    });
+    return { groups: groups };
+  }
+
+  function renderSharedPartsResult(data) {
+    el.sharedPartsResult.innerHTML = "";
+
+    if (data.groups.length === 0) {
+      el.sharedPartsResult.innerHTML = '<p class="table-empty-msg">沒有找到被兩個以上出貨階共用的單件料號。</p>';
+      return;
+    }
+
+    var wrap = document.createElement("div");
+    wrap.className = "table-scroll";
+    var table = document.createElement("table");
+    table.className = "demand-table";
+
+    var thead = document.createElement("thead");
+    var headTr = document.createElement("tr");
+    ["序号", "機種", "產品別", "客戶總成料號", "單件料號", "照片", "Usage per rack", "Usage per part"].forEach(function (h) {
+      var th = document.createElement("th"); th.textContent = h; headTr.appendChild(th);
+    });
+    thead.appendChild(headTr);
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    data.groups.forEach(function (g) {
+      g.entries.forEach(function (e, ei) {
+        var tr = document.createElement("tr");
+        if (ei === 0) {
+          var tdSeq = document.createElement("td");
+          tdSeq.textContent = g.seq;
+          tdSeq.rowSpan = g.entries.length;
+          tr.appendChild(tdSeq);
+        }
+        var tdModel = document.createElement("td"); tdModel.textContent = e.modelName; tr.appendChild(tdModel);
+        var tdDesc = document.createElement("td"); tdDesc.textContent = e.productDesc; tr.appendChild(tdDesc);
+        var tdTop = document.createElement("td"); tdTop.textContent = e.topPn; tr.appendChild(tdTop);
+        var tdPart = document.createElement("td"); tdPart.textContent = e.partPn; tr.appendChild(tdPart);
+        var tdImg = document.createElement("td");
+        if (e.image) {
+          var img = document.createElement("img");
+          img.className = "preview-thumb";
+          img.src = "data:image/" + e.image.ext + ";base64," + e.image.base64;
+          tdImg.appendChild(img);
+        }
+        tr.appendChild(tdImg);
+        var tdRack = document.createElement("td"); tdRack.textContent = e.usagePerRack; tr.appendChild(tdRack);
+        var tdPerPart = document.createElement("td"); tdPerPart.textContent = e.usagePerPart; tr.appendChild(tdPerPart);
+        tbody.appendChild(tr);
+      });
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    el.sharedPartsResult.appendChild(wrap);
+  }
+
+  el.calcSharedPartsBtn.addEventListener("click", function () {
+    if (!lastBomRows || lastBomRows.length === 0) {
+      el.sharedPartsResult.innerHTML = '<p class="bom-error">請先在上方 §3 上傳並比對過 BOM，再計算共用單件。</p>';
+      return;
+    }
+    if (state.manualRows.length === 0) {
+      el.sharedPartsResult.innerHTML = '<p class="bom-error">§2 明細表目前沒有任何出貨階，無法統計。</p>';
+      return;
+    }
+    lastSharedPartsData = computeSharedPartsReport();
+    renderSharedPartsResult(lastSharedPartsData);
   });
 
   // When embedded in portal-app's iframe (components.html), CSS position:sticky on the
