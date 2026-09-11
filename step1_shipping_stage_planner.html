@@ -217,16 +217,16 @@
   table.demand-table tfoot td { font-weight: 700; border-top: 2px solid var(--border-strong); background: var(--surface-2); }
 
   .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
-  table.pn-table { width: 100%; border-collapse: collapse; min-width: 870px; table-layout: auto; }
-  /* column order: 1 Item, 2 類型, 3 機種, 4 P/N, 5 Description, 6 Q'Ty, 7 Usage, 8 生產地,
-     9 delete. 類型/機種/Description/Q'Ty/Usage/生產地 each keep a protected minimum; P/N
-     has none, so it's the column that gives way first when the others need more room. */
-  table.pn-table th:nth-child(2), table.pn-table td:nth-child(2) { min-width: 130px; }
-  table.pn-table th:nth-child(3), table.pn-table td:nth-child(3) { min-width: 90px; }
-  table.pn-table th:nth-child(5), table.pn-table td:nth-child(5) { min-width: 170px; }
-  table.pn-table th:nth-child(6), table.pn-table td:nth-child(6) { min-width: 64px; }
-  table.pn-table th:nth-child(7), table.pn-table td:nth-child(7) { min-width: 120px; }
-  table.pn-table th:nth-child(8), table.pn-table td:nth-child(8) { min-width: 124px; }
+  table.pn-table { width: 100%; border-collapse: collapse; min-width: 780px; table-layout: auto; }
+  /* column order: 1 Item, 2 機種, 3 P/N, 4 Description, 5 Q'Ty, 6 Usage, 7 生產地, 8 delete
+     (類型 exists in the data model still, just not rendered here for now -- 2026-09-11).
+     機種/Description/Q'Ty/Usage/生產地 each keep a protected minimum; P/N has none, so it's
+     the column that gives way first when the others need more room. */
+  table.pn-table th:nth-child(2), table.pn-table td:nth-child(2) { min-width: 90px; }
+  table.pn-table th:nth-child(4), table.pn-table td:nth-child(4) { min-width: 170px; }
+  table.pn-table th:nth-child(5), table.pn-table td:nth-child(5) { min-width: 64px; }
+  table.pn-table th:nth-child(6), table.pn-table td:nth-child(6) { min-width: 120px; }
+  table.pn-table th:nth-child(7), table.pn-table td:nth-child(7) { min-width: 124px; }
   table.pn-table th {
     text-align: center; font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase;
     color: var(--text-faint); font-weight: 600; background: var(--surface-2);
@@ -342,10 +342,24 @@
               <tbody id="modelForecastBody"></tbody>
             </table>
           </div>
-          <div class="field-row" style="align-items:center; gap:8px; margin-top:8px;">
-            <input type="text" id="newModelNameInput" placeholder="例如：F0Q" style="width:110px; flex:none;">
-            <input type="number" id="newModelPerYearInput" placeholder="Per Year" min="0" style="width:100px; flex:none;">
-            <input type="number" id="newModelPerMonthInput" placeholder="Per Month" min="0" style="width:100px; flex:none;">
+          <div class="field-row" style="align-items:flex-end; gap:14px; margin-top:8px; flex-wrap:wrap;">
+            <div class="field" style="flex:0 0 140px;">
+              <label for="newModelNameInput">機種</label>
+              <input type="text" id="newModelNameInput" placeholder="例如：F0Q">
+            </div>
+            <div class="forecast-box">
+              <div class="forecast-title">Forecast</div>
+              <div class="forecast-fields">
+                <div class="field">
+                  <label for="newModelPerYearInput">Per Year</label>
+                  <input type="number" id="newModelPerYearInput" min="0">
+                </div>
+                <div class="field">
+                  <label for="newModelPerMonthInput">Per Month</label>
+                  <input type="number" id="newModelPerMonthInput" min="0">
+                </div>
+              </div>
+            </div>
             <button class="add-row-btn" id="addModelForecastRowBtn" type="button">+ 新增機種</button>
           </div>
         </div>
@@ -362,7 +376,7 @@
       <div class="table-scroll">
         <table class="pn-table">
           <thead>
-            <tr><th>Item</th><th>類型</th><th>機種</th><th>P/N</th><th>Description</th><th>Q'Ty</th><th>Usage (Per Rack)</th><th>生產地</th><th></th></tr>
+            <tr><th>Item</th><th>機種</th><th>P/N</th><th>Description</th><th>Q'Ty</th><th>Usage (Per Rack)</th><th>生產地</th><th></th></tr>
           </thead>
           <tbody id="stageTableBody"></tbody>
         </table>
@@ -663,6 +677,19 @@
     el.modelForecastBodyWrap.style.display = expanded ? "none" : "block";
   });
 
+  // Same Per Year <-> Per Month cross-fill as §1's own Forecast box (el.forecastPerYear/
+  // el.forecastPerMonth above) -- these two are just the "add a new 機種" row's own inputs,
+  // not tied to state until the row is actually added via addModelForecastRowBtn below
+  // (2026-09-11).
+  el.newModelPerYearInput.addEventListener("input", function () {
+    var y = num(el.newModelPerYearInput.value);
+    el.newModelPerMonthInput.value = y > 0 ? fmt(y / 12) : "";
+  });
+  el.newModelPerMonthInput.addEventListener("input", function () {
+    var m = num(el.newModelPerMonthInput.value);
+    el.newModelPerYearInput.value = m > 0 ? fmt(m * 12) : "";
+  });
+
   el.addModelForecastRowBtn.addEventListener("click", function () {
     var model = el.newModelNameInput.value.trim();
     var perYear = el.newModelPerYearInput.value.trim();
@@ -727,23 +754,10 @@
       tdItem.textContent = i + 1;
       tr.appendChild(tdItem);
 
-      var tdType = document.createElement("td");
-      var typeSelect = document.createElement("select");
-      var blankOpt = document.createElement("option");
-      blankOpt.value = ""; blankOpt.textContent = "請選擇";
-      typeSelect.appendChild(blankOpt);
-      TYPE_OPTIONS.forEach(function (opt) {
-        var o = document.createElement("option");
-        o.value = opt; o.textContent = opt;
-        typeSelect.appendChild(o);
-      });
-      typeSelect.value = row.type || "";
-      typeSelect.addEventListener("change", function () {
-        row.type = typeSelect.value;
-        saveState();
-      });
-      tdType.appendChild(typeSelect);
-      tr.appendChild(tdType);
+      // 類型 column (TYPE_OPTIONS select) is temporarily not rendered here -- row.type
+      // itself is left alone in the data model (still set by makeManualRow, still saved/
+      // restored), this is purely a "don't show this column for now" UI decision
+      // (2026-09-11).
 
       var tdModel = document.createElement("td");
       var modelInput = document.createElement("input");
@@ -1037,14 +1051,13 @@
     // Forecast (Per Year/Month) render as one inline label/value/label/value row right
     // under the title, above the header -- 2026-09-04 moved back out of the repeated-
     // per-row columns (the 2026-09-03 approach) per user request.
-    var MAIN_COL_COUNT = 10;
+    var MAIN_COL_COUNT = 9;
     var MONTH_COL_COUNT = 12;
     var monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 
     var columns = [
       { header: "Project Name", width: 16, wrap: true, capWidth: 26 },
       { header: "Item", width: 8, wrap: false },
-      { header: "類型", width: 13, wrap: false },
       { header: "機種", width: 12, wrap: false },
       { header: "P/N", width: 14, wrap: false },
       { header: "簡圖", width: 12, wrap: false, image: true },
@@ -1078,7 +1091,6 @@
       var values = [
         state.projectName || "",
         i + 1,
-        row.type || "",
         row.model || "",
         row.pn || "",
         getTopLevelBomImage(row.pn),
