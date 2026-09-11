@@ -217,16 +217,16 @@
   table.demand-table tfoot td { font-weight: 700; border-top: 2px solid var(--border-strong); background: var(--surface-2); }
 
   .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
-  table.pn-table { width: 100%; border-collapse: collapse; min-width: 780px; table-layout: auto; }
-  /* column order: 1 Item, 2 類型, 3 P/N, 4 Description, 5 Q'Ty, 6 Usage, 7 生產地, 8 delete.
-     類型/Description/Q'Ty/Usage/生產地 each keep a protected minimum; P/N has none, so
-     it's the column that gives way first when the others need more room. */
+  table.pn-table { width: 100%; border-collapse: collapse; min-width: 870px; table-layout: auto; }
+  /* column order: 1 Item, 2 類型, 3 機種, 4 P/N, 5 Description, 6 Q'Ty, 7 Usage, 8 生產地,
+     9 delete. 類型/機種/Description/Q'Ty/Usage/生產地 each keep a protected minimum; P/N
+     has none, so it's the column that gives way first when the others need more room. */
   table.pn-table th:nth-child(2), table.pn-table td:nth-child(2) { min-width: 130px; }
-  table.pn-table th:nth-child(3), table.pn-table td:nth-child(3) { min-width: 100px; }
-  table.pn-table th:nth-child(4), table.pn-table td:nth-child(4) { min-width: 170px; }
-  table.pn-table th:nth-child(5), table.pn-table td:nth-child(5) { min-width: 64px; }
-  table.pn-table th:nth-child(6), table.pn-table td:nth-child(6) { min-width: 120px; }
-  table.pn-table th:nth-child(7), table.pn-table td:nth-child(7) { min-width: 124px; }
+  table.pn-table th:nth-child(3), table.pn-table td:nth-child(3) { min-width: 90px; }
+  table.pn-table th:nth-child(5), table.pn-table td:nth-child(5) { min-width: 170px; }
+  table.pn-table th:nth-child(6), table.pn-table td:nth-child(6) { min-width: 64px; }
+  table.pn-table th:nth-child(7), table.pn-table td:nth-child(7) { min-width: 120px; }
+  table.pn-table th:nth-child(8), table.pn-table td:nth-child(8) { min-width: 124px; }
   table.pn-table th {
     text-align: center; font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase;
     color: var(--text-faint); font-weight: 600; background: var(--surface-2);
@@ -326,6 +326,30 @@
           </div>
         </div>
       </div>
+
+      <div class="stamping-ref-block" style="margin-top:14px;">
+        <button class="stamping-ref-toggle" id="modelForecastToggle" type="button" aria-expanded="false">
+          <span class="toggle-arrow">▸</span> 機種 Forecast 對照表（多機種評估用，可自行新增）
+        </button>
+        <div class="stamping-ref-body" id="modelForecastBodyWrap" style="display:none;">
+          <p class="panel-note" style="margin-top:0; margin-bottom:8px;">
+            §2 出貨階明細表裡的「機種」欄位如果有值、且在下面這張表裡有對應到，Usage 自動算出時會改用該機種自己的
+            Per Month；沒填機種或找不到對應機種的列，還是套用上面§1的全域 Forecast。
+          </p>
+          <div class="table-scroll">
+            <table class="ref-table">
+              <thead><tr><th>機種</th><th>Per Year</th><th>Per Month</th><th></th></tr></thead>
+              <tbody id="modelForecastBody"></tbody>
+            </table>
+          </div>
+          <div class="field-row" style="align-items:center; gap:8px; margin-top:8px;">
+            <input type="text" id="newModelNameInput" placeholder="例如：F0Q" style="width:110px; flex:none;">
+            <input type="number" id="newModelPerYearInput" placeholder="Per Year" min="0" style="width:100px; flex:none;">
+            <input type="number" id="newModelPerMonthInput" placeholder="Per Month" min="0" style="width:100px; flex:none;">
+            <button class="add-row-btn" id="addModelForecastRowBtn" type="button">+ 新增機種</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="panel">
@@ -338,7 +362,7 @@
       <div class="table-scroll">
         <table class="pn-table">
           <thead>
-            <tr><th>Item</th><th>類型</th><th>P/N</th><th>Description</th><th>Q'Ty</th><th>Usage (Per Rack)</th><th>生產地</th><th></th></tr>
+            <tr><th>Item</th><th>類型</th><th>機種</th><th>P/N</th><th>Description</th><th>Q'Ty</th><th>Usage (Per Rack)</th><th>生產地</th><th></th></tr>
           </thead>
           <tbody id="stageTableBody"></tbody>
         </table>
@@ -484,7 +508,8 @@
     forecastPerMonth: "",
     manualRows: [],
     tonnageRefTable: DEFAULT_TONNAGE_REF.slice(),
-    plasticTonnageRefTable: DEFAULT_PLASTIC_TONNAGE_REF.slice()
+    plasticTonnageRefTable: DEFAULT_PLASTIC_TONNAGE_REF.slice(),
+    modelForecastTable: []
   };
 
   var state = loadState();
@@ -552,6 +577,13 @@
     resetBtn: document.getElementById("resetBtn"),
     exportBtn: document.getElementById("exportBtn"),
     toast: document.getElementById("toast"),
+    modelForecastToggle: document.getElementById("modelForecastToggle"),
+    modelForecastBodyWrap: document.getElementById("modelForecastBodyWrap"),
+    modelForecastBody: document.getElementById("modelForecastBody"),
+    newModelNameInput: document.getElementById("newModelNameInput"),
+    newModelPerYearInput: document.getElementById("newModelPerYearInput"),
+    newModelPerMonthInput: document.getElementById("newModelPerMonthInput"),
+    addModelForecastRowBtn: document.getElementById("addModelForecastRowBtn"),
     bomAddFileBtn: document.getElementById("bomAddFileBtn"),
     bomFileInput: document.getElementById("bomFileInput"),
     bomFileStatus: document.getElementById("bomFileStatus"),
@@ -576,14 +608,82 @@
     sharedPartsResult: document.getElementById("sharedPartsResult")
   };
 
-  function makeManualRow() { return { type: "", pn: "", desc: "", qty: "", usage: "", usageAuto: true, site: "", siteSameAsAbove: false }; }
+  function makeManualRow() { return { type: "", model: "", pn: "", desc: "", qty: "", usage: "", usageAuto: true, site: "", siteSameAsAbove: false }; }
 
   // Usage (Per Rack) = Forecast 的 Per Month × 這一列的 Q'Ty. Always a number (0 when
   // either input is blank/0), never null -- this formula doesn't depend on anything
-  // row-specific besides Q'Ty, so there's no "not applicable yet" case to guard against.
-  function calcUsageFromForecast(row) {
-    return num(state.forecastPerMonth) * num(row.qty);
+  // row-specific besides Q'Ty/機種, so there's no "not applicable yet" case to guard
+  // against. When this row has its own 機種 AND that 機種 has an entry in
+  // state.modelForecastTable, use THAT model's own Per Month instead of §1's global
+  // Forecast -- lets a multi-機種 upload (each with its own Forecast) still auto-calc
+  // correctly per row, while a row with no 機種 (or one not in the table) keeps the old
+  // single-Forecast behavior unchanged (2026-09-11 confirmed).
+  function findModelForecastEntry(model) {
+    if (!model) return null;
+    return state.modelForecastTable.filter(function (e) { return e.model === model; })[0] || null;
   }
+
+  function resolveForecastPerMonth(row) {
+    var modelEntry = findModelForecastEntry(row.model);
+    return modelEntry ? num(modelEntry.perMonth) : num(state.forecastPerMonth);
+  }
+
+  function calcUsageFromForecast(row) {
+    return resolveForecastPerMonth(row) * num(row.qty);
+  }
+
+  function renderModelForecastTable() {
+    var body = el.modelForecastBody;
+    body.innerHTML = "";
+    state.modelForecastTable.forEach(function (entry, i) {
+      var tr = document.createElement("tr");
+      var tdM = document.createElement("td"); tdM.textContent = entry.model; tr.appendChild(tdM);
+      var tdY = document.createElement("td"); tdY.textContent = entry.perYear; tr.appendChild(tdY);
+      var tdMo = document.createElement("td"); tdMo.textContent = entry.perMonth; tr.appendChild(tdMo);
+      var tdDel = document.createElement("td");
+      tdDel.style.textAlign = "center";
+      var delBtn = document.createElement("button");
+      delBtn.className = "row-del"; delBtn.type = "button"; delBtn.textContent = "✕";
+      delBtn.title = "刪除此機種";
+      delBtn.addEventListener("click", function () {
+        state.modelForecastTable.splice(i, 1);
+        saveState();
+        renderModelForecastTable();
+        renderStageTable(); // rows using this 機種 fall back to the global Forecast now
+      });
+      tdDel.appendChild(delBtn);
+      tr.appendChild(tdDel);
+      body.appendChild(tr);
+    });
+  }
+
+  el.modelForecastToggle.addEventListener("click", function () {
+    var expanded = el.modelForecastToggle.getAttribute("aria-expanded") === "true";
+    el.modelForecastToggle.setAttribute("aria-expanded", String(!expanded));
+    el.modelForecastBodyWrap.style.display = expanded ? "none" : "block";
+  });
+
+  el.addModelForecastRowBtn.addEventListener("click", function () {
+    var model = el.newModelNameInput.value.trim();
+    var perYear = el.newModelPerYearInput.value.trim();
+    var perMonth = el.newModelPerMonthInput.value.trim();
+    if (!model || (!perYear && !perMonth)) {
+      showToast("請輸入機種名稱與至少一個 Forecast 數字", true);
+      return;
+    }
+    var exists = state.modelForecastTable.some(function (e) { return e.model === model; });
+    if (exists) {
+      showToast("這個機種已經在對照表中了", true);
+      return;
+    }
+    state.modelForecastTable.push({ model: model, perYear: perYear, perMonth: perMonth });
+    saveState();
+    el.newModelNameInput.value = "";
+    el.newModelPerYearInput.value = "";
+    el.newModelPerMonthInput.value = "";
+    renderModelForecastTable();
+    renderStageTable(); // rows already using this 機種 should pick up its Forecast immediately
+  });
 
   // resolves a row's displayed 生產地, following the "同上" chain upward to the
   // nearest row that has its own value typed in
@@ -620,6 +720,7 @@
 
     rows.forEach(function (row, i) {
       var tr = document.createElement("tr");
+      var usageInput; // referenced by the model/qty handlers below to live-update the computed default
 
       var tdItem = document.createElement("td");
       tdItem.className = "item-cell";
@@ -644,6 +745,22 @@
       tdType.appendChild(typeSelect);
       tr.appendChild(tdType);
 
+      var tdModel = document.createElement("td");
+      var modelInput = document.createElement("input");
+      modelInput.type = "text";
+      modelInput.placeholder = "機種";
+      modelInput.value = row.model || "";
+      modelInput.addEventListener("input", function () {
+        row.model = modelInput.value;
+        if (row.usageAuto !== false) {
+          row.usage = String(calcUsageFromForecast(row));
+          usageInput.value = row.usage;
+        }
+        saveState();
+      });
+      tdModel.appendChild(modelInput);
+      tr.appendChild(tdModel);
+
       [["pn", "text", "PN-000"], ["desc", "text", "說明"]].forEach(function (f) {
         var td = document.createElement("td");
         var input = document.createElement("input");
@@ -660,8 +777,6 @@
         td.appendChild(input);
         tr.appendChild(td);
       });
-
-      var usageInput; // referenced by the qty handler below to live-update the computed default
 
       var tdQty = document.createElement("td");
       var qtyInput = document.createElement("input");
@@ -774,6 +889,7 @@
 
   function renderAll() {
     renderBasicInfo();
+    renderModelForecastTable();
     renderStageTable();
     renderTonnageRefTable();
     renderPlasticRefTable();
@@ -921,7 +1037,7 @@
     // Forecast (Per Year/Month) render as one inline label/value/label/value row right
     // under the title, above the header -- 2026-09-04 moved back out of the repeated-
     // per-row columns (the 2026-09-03 approach) per user request.
-    var MAIN_COL_COUNT = 9;
+    var MAIN_COL_COUNT = 10;
     var MONTH_COL_COUNT = 12;
     var monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 
@@ -929,6 +1045,7 @@
       { header: "Project Name", width: 16, wrap: true, capWidth: 26 },
       { header: "Item", width: 8, wrap: false },
       { header: "類型", width: 13, wrap: false },
+      { header: "機種", width: 12, wrap: false },
       { header: "P/N", width: 14, wrap: false },
       { header: "簡圖", width: 12, wrap: false, image: true },
       { header: "Description", width: 20, wrap: true, capWidth: 32 },
@@ -953,13 +1070,16 @@
     var yearLabel = yearNow + "年";
 
     var rows = state.manualRows;
-    var perMonth = num(state.forecastPerMonth);
     var dataRows = rows.map(function (row, i) {
-      var monthVal = num(row.usage) * perMonth;
+      // Same 機種-aware Forecast resolution as calcUsageFromForecast -- a row with its own
+      // 機種 in state.modelForecastTable uses that model's own Per Month here too, not just
+      // when computing Usage (Per Rack) itself (2026-09-11 confirmed).
+      var monthVal = num(row.usage) * resolveForecastPerMonth(row);
       var values = [
         state.projectName || "",
         i + 1,
         row.type || "",
+        row.model || "",
         row.pn || "",
         getTopLevelBomImage(row.pn),
         row.desc || "",
@@ -2688,6 +2808,11 @@
       group.items.slice(1).forEach(function (sub) {
         var subPn = (sub.customerPn || "").trim();
         if (!subPn) return;
+        // Only parts that actually go through a molding/stamping machine count -- standard
+        // hardware (rivets, screws, pins) has no 機台噸位 and isn't "shared tooling" in the
+        // sense this report cares about, even if the same fastener P/N happens to be reused
+        // across stages (2026-09-11 confirmed).
+        if (!sub.tonnage) return;
         var key = subPn.toUpperCase();
         if (seenInThisStage[key]) return; // same part used more than once within one stage's own tree
         seenInThisStage[key] = true;
