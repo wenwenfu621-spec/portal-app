@@ -1070,15 +1070,30 @@
 
     var title = (state.projectName || "出貨階規劃器") + " — 出貨階明細表";
 
-    // One row per state.modelForecastTable entry (機種 name + its own Per Year/Per Month)
-    // when that table has anything in it -- REPLACES the single global-Forecast row rather
-    // than sitting alongside it. An empty table falls back to that one global row, same as
-    // before 機種-level Forecasts existed at all (2026-09-11 confirmed).
-    var forecastRows = state.modelForecastTable.length > 0
-      ? state.modelForecastTable.map(function (e) {
-          return { model: e.model, pairs: [["Forecast (Per Year)", e.perYear || ""], ["Forecast (Per Month)", e.perMonth || ""]] };
-        })
-      : [{ model: null, pairs: [["Forecast (Per Year)", state.forecastPerYear || ""], ["Forecast (Per Month)", state.forecastPerMonth || ""]] }];
+    // One row per 機種 when state.modelForecastTable has anything in it -- REPLACES the
+    // single global-Forecast row rather than sitting alongside it (2026-09-11 confirmed).
+    // §1's own top Forecast box (state.forecastPerYear/forecastPerMonth) isn't itself an
+    // entry in that table -- it's the separate "default" Forecast tied to 專案機種名 -- so
+    // it's included here too, as an implicit first row labeled with 專案機種名, whenever it
+    // has a value and isn't already duplicated by an explicit table entry of the same name.
+    // Without this, adding just ONE 機種 to the table would silently drop the global
+    // Forecast (and whatever it represents) out of the export entirely (2026-09-11
+    // confirmed -- this was the actual bug, not the replace-vs-keep decision itself).
+    var forecastRows;
+    if (state.modelForecastTable.length > 0) {
+      var globalLabel = state.projectName || "(全域)";
+      var globalHasValue = !!(state.forecastPerYear || state.forecastPerMonth);
+      var globalAlreadyInTable = state.modelForecastTable.some(function (e) { return e.model === globalLabel; });
+      forecastRows = [];
+      if (globalHasValue && !globalAlreadyInTable) {
+        forecastRows.push({ model: globalLabel, pairs: [["Forecast (Per Year)", state.forecastPerYear || ""], ["Forecast (Per Month)", state.forecastPerMonth || ""]] });
+      }
+      state.modelForecastTable.forEach(function (e) {
+        forecastRows.push({ model: e.model, pairs: [["Forecast (Per Year)", e.perYear || ""], ["Forecast (Per Month)", e.perMonth || ""]] });
+      });
+    } else {
+      forecastRows = [{ model: null, pairs: [["Forecast (Per Year)", state.forecastPerYear || ""], ["Forecast (Per Month)", state.forecastPerMonth || ""]] }];
+    }
 
     // only 匯出時間 remains an "info row" (real export only, appended after the table --
     // see buildWorkbook).
