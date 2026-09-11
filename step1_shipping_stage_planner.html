@@ -1070,10 +1070,15 @@
 
     var title = (state.projectName || "出貨階規劃器") + " — 出貨階明細表";
 
-    var forecastRow = [
-      ["Forecast (Per Year)", state.forecastPerYear || ""],
-      ["Forecast (Per Month)", state.forecastPerMonth || ""]
-    ];
+    // One row per state.modelForecastTable entry (機種 name + its own Per Year/Per Month)
+    // when that table has anything in it -- REPLACES the single global-Forecast row rather
+    // than sitting alongside it. An empty table falls back to that one global row, same as
+    // before 機種-level Forecasts existed at all (2026-09-11 confirmed).
+    var forecastRows = state.modelForecastTable.length > 0
+      ? state.modelForecastTable.map(function (e) {
+          return { model: e.model, pairs: [["Forecast (Per Year)", e.perYear || ""], ["Forecast (Per Month)", e.perMonth || ""]] };
+        })
+      : [{ model: null, pairs: [["Forecast (Per Year)", state.forecastPerYear || ""], ["Forecast (Per Month)", state.forecastPerMonth || ""]] }];
 
     // only 匯出時間 remains an "info row" (real export only, appended after the table --
     // see buildWorkbook).
@@ -1104,7 +1109,7 @@
     });
 
     return {
-      title: title, forecastRow: forecastRow, infoRows: infoRows, columns: columns,
+      title: title, forecastRows: forecastRows, infoRows: infoRows, columns: columns,
       MAIN_COL_COUNT: MAIN_COL_COUNT, MONTH_COL_COUNT: MONTH_COL_COUNT,
       yearLabel: yearLabel, dataRows: dataRows
     };
@@ -1148,22 +1153,48 @@
     styleCell(titleCell, null, { bold: true, size: 15, align: LEFT_NOWRAP });
     nextRow++;
 
-    // Forecast (Per Year) / Forecast (Per Month), one row: label, value, label, value.
-    var forecastRowIndex = nextRow++;
-    ws.mergeCells("A" + forecastRowIndex + ":B" + forecastRowIndex);
-    var fLabel1 = ws.getCell("A" + forecastRowIndex);
-    fLabel1.value = data.forecastRow[0][0];
-    styleCell(fLabel1, null, { bold: true, align: LEFT_NOWRAP });
-    var fValue1 = ws.getCell("C" + forecastRowIndex);
-    fValue1.value = data.forecastRow[0][1];
-    styleCell(fValue1, null, { align: CENTER_NOWRAP });
-    ws.mergeCells("D" + forecastRowIndex + ":E" + forecastRowIndex);
-    var fLabel2 = ws.getCell("D" + forecastRowIndex);
-    fLabel2.value = data.forecastRow[1][0];
-    styleCell(fLabel2, null, { bold: true, align: LEFT_NOWRAP });
-    var fValue2 = ws.getCell("F" + forecastRowIndex);
-    fValue2.value = data.forecastRow[1][1];
-    styleCell(fValue2, null, { align: CENTER_NOWRAP });
+    // Forecast (Per Year) / Forecast (Per Month) -- one row per state.modelForecastTable
+    // entry (機種 name in column A, shifting the label/value pairs over by one column) when
+    // that table is non-empty; otherwise the original single global-Forecast row, unchanged
+    // (2026-09-11 confirmed: 機種 breakdown REPLACES the global row, doesn't sit alongside
+    // it, and an empty table keeps today's single-row look exactly as-is).
+    data.forecastRows.forEach(function (entry) {
+      var r = nextRow++;
+      if (entry.model != null) {
+        var mCell = ws.getCell("A" + r);
+        mCell.value = entry.model;
+        styleCell(mCell, null, { bold: true, align: LEFT_NOWRAP });
+        ws.mergeCells("B" + r + ":C" + r);
+        var l1 = ws.getCell("B" + r);
+        l1.value = entry.pairs[0][0];
+        styleCell(l1, null, { bold: true, align: LEFT_NOWRAP });
+        var v1 = ws.getCell("D" + r);
+        v1.value = entry.pairs[0][1];
+        styleCell(v1, null, { align: CENTER_NOWRAP });
+        ws.mergeCells("E" + r + ":F" + r);
+        var l2 = ws.getCell("E" + r);
+        l2.value = entry.pairs[1][0];
+        styleCell(l2, null, { bold: true, align: LEFT_NOWRAP });
+        var v2 = ws.getCell("G" + r);
+        v2.value = entry.pairs[1][1];
+        styleCell(v2, null, { align: CENTER_NOWRAP });
+      } else {
+        ws.mergeCells("A" + r + ":B" + r);
+        var fLabel1 = ws.getCell("A" + r);
+        fLabel1.value = entry.pairs[0][0];
+        styleCell(fLabel1, null, { bold: true, align: LEFT_NOWRAP });
+        var fValue1 = ws.getCell("C" + r);
+        fValue1.value = entry.pairs[0][1];
+        styleCell(fValue1, null, { align: CENTER_NOWRAP });
+        ws.mergeCells("D" + r + ":E" + r);
+        var fLabel2 = ws.getCell("D" + r);
+        fLabel2.value = entry.pairs[1][0];
+        styleCell(fLabel2, null, { bold: true, align: LEFT_NOWRAP });
+        var fValue2 = ws.getCell("F" + r);
+        fValue2.value = entry.pairs[1][1];
+        styleCell(fValue2, null, { align: CENTER_NOWRAP });
+      }
+    });
 
     // two-row header: Project Name..Usage span both rows; 年分 spans the 12 month columns
     // on row 1, with the individual month labels on row 2 underneath it.
@@ -1229,9 +1260,14 @@
 
     // Grow every column to fit its widest content (header included). Wrap columns are
     // capped at capWidth and rely on wrapping + the row-height compensation above;
-    // non-wrap columns have nothing to fall back on, so they grow uncapped.
+    // non-wrap columns have nothing to fall back on, so they grow uncapped. +6 padding for
+    // non-wrap columns, not +4 -- same reason as BOM總覽's own column-width fix: this
+    // workbook's font (微軟正黑體) renders wider than Excel's column-width unit assumes, so
+    // a P/N column sized with only +4 padding was still clipping real values like
+    // "3LF0QCA0010" even though colMax already measured them correctly (2026-09-11
+    // confirmed against a real export).
     columns.forEach(function (col, i) {
-      var needed = colMax[i] + (col.wrap ? 2 : 4);
+      var needed = colMax[i] + (col.wrap ? 2 : 6);
       if (col.wrap) {
         ws.getColumn(i + 1).width = Math.min(Math.max(needed, col.width), col.capWidth || col.width);
       } else {
@@ -1631,25 +1667,33 @@
     table.appendChild(caption);
 
     var forecastBody = document.createElement("tbody");
-    var forecastTr = document.createElement("tr");
-    forecastTr.className = "preview-forecast-row";
-    var fLabel1 = document.createElement("td");
-    fLabel1.className = "preview-info-label";
-    fLabel1.colSpan = 2;
-    fLabel1.textContent = data.forecastRow[0][0];
-    var fValue1 = document.createElement("td");
-    fValue1.textContent = data.forecastRow[0][1];
-    var fLabel2 = document.createElement("td");
-    fLabel2.className = "preview-info-label";
-    fLabel2.colSpan = 2;
-    fLabel2.textContent = data.forecastRow[1][0];
-    var fValue2 = document.createElement("td");
-    fValue2.textContent = data.forecastRow[1][1];
-    forecastTr.appendChild(fLabel1);
-    forecastTr.appendChild(fValue1);
-    forecastTr.appendChild(fLabel2);
-    forecastTr.appendChild(fValue2);
-    forecastBody.appendChild(forecastTr);
+    data.forecastRows.forEach(function (entry) {
+      var forecastTr = document.createElement("tr");
+      forecastTr.className = "preview-forecast-row";
+      if (entry.model != null) {
+        var mCell = document.createElement("td");
+        mCell.className = "preview-info-label";
+        mCell.textContent = entry.model;
+        forecastTr.appendChild(mCell);
+      }
+      var fLabel1 = document.createElement("td");
+      fLabel1.className = "preview-info-label";
+      fLabel1.colSpan = 2;
+      fLabel1.textContent = entry.pairs[0][0];
+      var fValue1 = document.createElement("td");
+      fValue1.textContent = entry.pairs[0][1];
+      var fLabel2 = document.createElement("td");
+      fLabel2.className = "preview-info-label";
+      fLabel2.colSpan = 2;
+      fLabel2.textContent = entry.pairs[1][0];
+      var fValue2 = document.createElement("td");
+      fValue2.textContent = entry.pairs[1][1];
+      forecastTr.appendChild(fLabel1);
+      forecastTr.appendChild(fValue1);
+      forecastTr.appendChild(fLabel2);
+      forecastTr.appendChild(fValue2);
+      forecastBody.appendChild(forecastTr);
+    });
     table.appendChild(forecastBody);
 
     var thead = document.createElement("thead");
